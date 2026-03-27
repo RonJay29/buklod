@@ -51,13 +51,13 @@ function DeviceCard({ device, accentIndex, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`group w-full text-left bg-white rounded-xl border border-slate-200 ${accent.ring}
+      className={`group w-full text-left bg-white shadow rounded-xl border border-slate-200 ${accent.ring}
         hover:shadow-md hover:shadow-slate-100/80 transition-all duration-150
         flex items-center gap-3 px-3 py-2.5`}
     >
       {/* Mini illustration */}
-      <div className={`w-9 h-9 rounded-lg shrink-0 flex items-center justify-center ${accent.bg} border ${accent.border}`}>
-        <DeviceIllustration accent={accent.hex} size={28} />
+      <div className={`w-9 h-9 rounded-lg shrink-0 flex items-center justify-center bg-blue-50 border border-blue-500 `}>
+        <DeviceIllustration  size={28} />
       </div>
 
       {/* Name + DevEUI */}
@@ -185,7 +185,7 @@ export default function DeviceData() {
             <div key={k.label}
               className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-1 hover:shadow-md hover:shadow-blue-100 hover:border-blue-200 transition-all duration-200">
               <span className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">{k.label}</span>
-              <span className={`font-semibold font-mono tracking-tight ${k.color} ${k.small ? "text-base mt-1" : "text-2xl"}`}>
+              <span className={`font-semibold font-mono tracking-tight text-gray-700 ${k.small ? "text-base mt-1" : "text-2xl"}`}>
                 {(loadingDevices && k.label === "Total Devices") ? (
                   <span className="inline-block w-8 h-7 bg-slate-100 rounded-md animate-pulse" />
                 ) : k.value}

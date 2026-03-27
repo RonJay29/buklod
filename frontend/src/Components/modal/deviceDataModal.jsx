@@ -128,15 +128,15 @@ export default function DeviceDataModal({ device, accentIndex = 0, onClose }) {
         - max-h-[calc(100vh-2rem)]  → always leaves gap top + bottom
         - flex flex-col + overflow-hidden → header/footer fixed, body scrolls
       */}
-      <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl shadow-slate-900/20 flex flex-col overflow-hidden max-h-[calc(100vh-2rem)]">
+      <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl  shadow-slate-900/20 flex flex-col overflow-hidden max-h-[calc(100vh-2rem)]">
 
         {/* ══ HEADER ═══════════════════════════════════════════════════════ */}
-        <div className={`flex-shrink-0 flex flex-col sm:flex-row bg-gradient-to-br ${accent.from} ${accent.to} border-b ${accent.border}`}>
+        <div className={`flex-shrink-0 flex flex-col sm:flex-row bg-blue-100 border-b border-blue-300 `}>
 
           {/* Identity strip */}
-          <div className="flex items-center gap-4 px-6 py-5 sm:w-64 sm:shrink-0"
-            style={{ borderRight: `1px solid ${accent.hex}22` }}>
-            <div className={`w-[72px] h-[72px] rounded-2xl bg-white border ${accent.border} shadow-sm flex items-center justify-center shrink-0`}>
+          <div className="flex items-center gap-4 px-6 py-5 sm:w-64 sm:shrink-0 border-r border-blue-300  "
+           >
+            <div className={`w-[72px] h-[72px] rounded-2xl bg-white border border-gray-600 shadow-sm flex items-center justify-center shrink-0`}>
               <DeviceIllustration accent={accent.hex} size={58} />
             </div>
             <div className="flex flex-col gap-1.5 min-w-0">
@@ -147,20 +147,19 @@ export default function DeviceDataModal({ device, accentIndex = 0, onClose }) {
           </div>
 
           {/* Quick-stats grid — 2×2 on mobile, 4 cols on sm+ */}
-          <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0"
-            style={{ borderColor: `${accent.hex}18` }}>
-            {[
-              { label: "Date Added",  value: device.dateAdded    || "—" },
-              { label: "Signed On",   value: isSigned || isRevoked ? (device.certifiedDate || "—") : "Not signed" },
-              { label: "Revoked On",  value: isRevoked ? (device.revokedDate || "—") : "—" },
-              { label: "HMAC Length", value: device.hmacLength ? `${device.hmacLength} B` : "—" },
-            ].map((s) => (
-              <div key={s.label} className="flex flex-col justify-center px-4 py-4 gap-0.5">
-                <span className="text-[9px] uppercase tracking-widest font-semibold text-slate-400">{s.label}</span>
-                <span className="text-[13px] font-semibold text-slate-700">{s.value}</span>
-              </div>
-            ))}
-          </div>
+          <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-blue-300">
+  {[
+    { label: "Date Added",  value: device.dateAdded    || "—" },
+    { label: "Signed On",   value: isSigned || isRevoked ? (device.certifiedDate || "—") : "Not signed" },
+    { label: "Revoked On",  value: isRevoked ? (device.revokedDate || "—") : "—" },
+    { label: "HMAC Length", value: device.hmacLength ? `${device.hmacLength} B` : "—" },
+  ].map((s) => (
+    <div key={s.label} className="flex flex-col justify-center px-4 py-4 gap-0.5">
+      <span className="text-[9px] uppercase tracking-widest font-semibold text-slate-400">{s.label}</span>
+      <span className="text-[13px] font-semibold text-slate-700">{s.value}</span>
+    </div>
+  ))}
+</div>
 
           {/* Close */}
           <button

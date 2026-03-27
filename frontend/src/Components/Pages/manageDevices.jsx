@@ -153,10 +153,10 @@ export default function ManageDevices() {
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Total Devices", value: counts.all,      color: "text-slate-800" },
-          { label: "Signed",        value: counts.signed,   color: "text-blue-600"  },
-          { label: "Unsigned",      value: counts.unsigned, color: "text-amber-500" },
-          { label: "Revoked",       value: counts.revoked,  color: "text-rose-500"  },
+          { label: "Total Devices", value: counts.all,      color: "text-gray-700" },
+          { label: "Signed",        value: counts.signed,   color: "text-gray-700"  },
+          { label: "Unsigned",      value: counts.unsigned, color: "text-gray-700" },
+          { label: "Revoked",       value: counts.revoked,  color: "text-gray-700"  },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-1 hover:shadow-md hover:shadow-blue-100 hover:border-blue-200 transition-all duration-200">
             <span className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">{s.label}</span>
@@ -197,9 +197,9 @@ export default function ManageDevices() {
                 }`}>
                 {f.label}
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                  f.key === "revoked"  ? "bg-rose-100 text-rose-600"   :
-                  f.key === "signed"   ? "bg-blue-100 text-blue-600"   :
-                  f.key === "unsigned" ? "bg-amber-100 text-amber-600" :
+                  f.key === "revoked"  ? "bg-slate-200 text-slate-600"   :
+                  f.key === "signed"   ? "bg-slate-200 text-slate-600"   :
+                  f.key === "unsigned" ? "bg-slate-200 text-slate-600" :
                   "bg-slate-200 text-slate-600"
                 }`}>
                   {counts[f.key]}
@@ -223,12 +223,12 @@ export default function ManageDevices() {
         {/* Table */}
         <div className="rounded-xl border border-slate-200 overflow-hidden">
           <div className="grid bg-slate-50 px-5 py-2.5 text-[11px] uppercase tracking-wider text-slate-400 font-medium border-b border-slate-200"
-            style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr 2fr" }}>
+            style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1.75fr" }}>
             <span>Device</span>
             <span>Device ID</span>
             <span>Location</span>
             <span>Certificate</span>
-            <span>Date Added</span>
+        
             <span className="text-right">Actions</span>
           </div>
 
@@ -254,24 +254,27 @@ export default function ManageDevices() {
 
               return (
                 <div key={device.id}
-                  className={`grid items-center px-5 py-3.5 border-t border-slate-100 text-sm transition
+                  className={`grid items-center px-5 py-3.5 gap-4 border-t border-slate-100 text-sm transition
                     ${isRevoked ? "bg-rose-50/30 hover:bg-rose-50/50" : "text-slate-700 hover:bg-blue-50/40"}`}
-                  style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr 2fr" }}
+                  style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1.75fr" }}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                       isRevoked ? "bg-rose-50 border border-rose-100 text-rose-400"
                                 : "bg-blue-50 border border-blue-100 text-blue-500"
                     }`}>
                       <IconDevice />
                     </div>
-                    <p className="font-medium text-slate-800 text-[13px] truncate">{device.name}</p>
+                    
+                      <p className="font-medium text-slate-800 text-[13px] break-words ">{device.name}</p>
+                    
+                    
                   </div>
 
                   <span className="font-mono text-xs text-slate-500">{device.deviceId}</span>
-                  <span className="text-slate-600 text-[13px]">{device.location}</span>
+                  <span className="text-slate-600 text-[13px] break-words">{device.location}</span>
                   <span>{statusBadge[status] || statusBadge.unsigned}</span>
-                  <span className="text-xs text-slate-400">{device.dateAdded}</span>
+                  
 
                   <div className="flex items-center justify-end gap-1 flex-wrap">
                     <button onClick={() => setViewTarget(device)}
@@ -305,7 +308,7 @@ export default function ManageDevices() {
 
                     <button onClick={() => setDeleteTarget(device)}
                       className="flex items-center gap-1 text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-rose-200 transition">
-                      <IconTrash /> Remove
+                      <IconTrash /> 
                     </button>
                   </div>
                 </div>
