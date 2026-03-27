@@ -50,15 +50,15 @@ export default function AuthPage() {
         <div className="absolute top-20 left-10 w-72 h-72 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-20 left-32 w-56 h-56 bg-blue-900/30 rounded-full blur-2xl pointer-events-none" />
 
-        <div className="flex items-center gap-2 mt-5 relative z-10">
-          <h1 className="text-2xl font-bold">
-            Welcome to Demeter WebApp
+        <div className="flex items-center gap-2 mt-15 relative z-10">
+          <h1 className="text-5xl font-bold">
+            Buklod
             <br />
             <p className="text-lg text-slate-400 font-light max-w-md mt-1">
-              A beautiful dashboard for managing your sensor data and analytics.
+              A beautiful dashboard for managing your devices and sensor data. 
             </p>
           </h1>
-          <img src="./logo6.png" alt="logo" className="w-45 h-60 object-contain" />
+          
         </div>
 
         <div className="flex flex-col gap-3 mt-10 relative z-10">
@@ -87,11 +87,7 @@ export default function AuthPage() {
             {/* Header */}
             <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 p-8 text-white text-center relative overflow-hidden">
               <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_30%_50%,#3b82f6,transparent)]" />
-              <div className="w-14 h-14 bg-blue-500/20 border border-blue-400/20 rounded-2xl mx-auto mb-4 flex items-center justify-center relative z-10">
-                <svg fill="none" stroke="#93c5fd" strokeWidth="2" viewBox="0 0 24 24" className="w-7 h-7">
-                  <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
+           
               <h1 className="text-2xl font-bold tracking-tight relative z-10">
                 {mode === "login" ? "Welcome back" : "Create account"}
               </h1>
@@ -192,20 +188,12 @@ export default function AuthPage() {
                 </div>
               </div>
 
-              {mode === "login" && (
-                <div className="flex items-center justify-between text-xs">
-                  <label className="flex items-center gap-2 text-slate-500 cursor-pointer">
-                    <input type="checkbox" className="accent-blue-600 rounded" />
-                    Remember me
-                  </label>
-                  <a href="#" className="text-blue-600 hover:text-blue-800 font-semibold transition">Forgot password?</a>
-                </div>
-              )}
+             
 
               {mode === "signup" && (
                 <label className="flex items-start gap-2 text-xs text-slate-500 cursor-pointer">
-                  <input type="checkbox" className="accent-blue-600 mt-0.5 rounded" />
-                  <span>I agree to the <a href="#" className="text-blue-600 font-semibold underline underline-offset-2">Terms of Service</a> and <a href="#" className="text-blue-600 font-semibold underline underline-offset-2">Privacy Policy</a></span>
+                  {/* <input type="checkbox" className="accent-blue-600 mt-0.5 rounded" />
+                  <span>I agree to the <a href="#" className="text-blue-600 font-semibold underline underline-offset-2">Terms of Service</a> and <a href="#" className="text-blue-600 font-semibold underline underline-offset-2">Privacy Policy</a></span> */}
                 </label>
               )}
 
@@ -220,6 +208,16 @@ export default function AuthPage() {
                 }
               </button>
             </div>
+
+             {mode === "login" && (
+                <div className="flex items-center justify-center text-xs">
+                  {/* <label className="flex items-center gap-2 text-slate-500 cursor-pointer">
+                    <input type="checkbox" className="accent-blue-600 rounded" />
+                    Remember me
+                  </label> */}
+                 <p className="text-slate-400">Forgot Password? </p> <a href="#" className="text-blue-600 hover:text-blue-800  font-semibold transition"> Click here.</a>
+                </div>
+              )}
 
             {/* Footer */}
             <p className="text-center text-xs text-slate-400 pb-6">

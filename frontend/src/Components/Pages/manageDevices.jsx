@@ -39,13 +39,12 @@ const IconDevice = () => (
 );
 
 const FILTERS = [
-  { key: "all",      label: "All" },
-  { key: "signed",   label: "Signed"      },
-  { key: "unsigned", label: "Unsigned"    },
-  { key: "revoked",  label: "Revoked"     },
+  { key: "all",      label: "All"      },
+  { key: "signed",   label: "Signed"   },
+  { key: "unsigned", label: "Unsigned" },
+  { key: "revoked",  label: "Revoked"  },
 ];
 
-// Badge styles per cert_status
 const statusBadge = {
   signed: (
     <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-blue-50 text-blue-700">
@@ -65,16 +64,16 @@ const statusBadge = {
 };
 
 export default function ManageDevices() {
-  const [devices, setDevices]           = useState([]);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState("");
-  const [search, setSearch]             = useState("");
-  const [filter, setFilter]             = useState("all");
-  const [viewTarget, setViewTarget]     = useState(null);
-  const [editTarget, setEditTarget]     = useState(null);
-  const [addOpen, setAddOpen]           = useState(false);
+  const [devices,      setDevices]      = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState("");
+  const [search,       setSearch]       = useState("");
+  const [filter,       setFilter]       = useState("all");
+  const [viewTarget,   setViewTarget]   = useState(null);
+  const [editTarget,   setEditTarget]   = useState(null);
+  const [addOpen,      setAddOpen]      = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [signTarget, setSignTarget]     = useState(null);
+  const [signTarget,   setSignTarget]   = useState(null);
 
   useEffect(() => { fetchDevices(); }, []);
 
@@ -83,7 +82,7 @@ export default function ManageDevices() {
     setError("");
     try {
       const { data } = await api.get("/devices");
-      setDevices(data.devices);
+      setDevices(data.devices || []);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load devices");
     } finally {
@@ -118,6 +117,7 @@ export default function ManageDevices() {
     }
   };
 
+  // Used by both SignCertificateModal AND ViewDeviceModal re-sign flow
   const handleSigned = (updatedDevice) => {
     setDevices((prev) => prev.map((d) => (d.id === updatedDevice.id ? updatedDevice : d)));
   };
@@ -131,7 +131,6 @@ export default function ManageDevices() {
     }
   };
 
-  // Filter uses certStatus from DB — no client-side guessing
   const filtered = devices.filter((d) => {
     const matchFilter = filter === "all" || d.certStatus === filter;
     const matchSearch =
@@ -159,8 +158,7 @@ export default function ManageDevices() {
           { label: "Unsigned",      value: counts.unsigned, color: "text-amber-500" },
           { label: "Revoked",       value: counts.revoked,  color: "text-rose-500"  },
         ].map((s) => (
-          <div key={s.label}
-            className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-1 hover:shadow-md hover:shadow-blue-100 hover:border-blue-200 transition-all duration-200">
+          <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-1 hover:shadow-md hover:shadow-blue-100 hover:border-blue-200 transition-all duration-200">
             <span className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">{s.label}</span>
             <span className={`text-2xl font-semibold font-mono tracking-tight ${s.color}`}>{s.value}</span>
           </div>
@@ -187,7 +185,7 @@ export default function ManageDevices() {
           </div>
         )}
 
-        {/* Filter tabs + search */}
+        {/* Filters + search */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl">
             {FILTERS.map((f) => (
@@ -196,17 +194,16 @@ export default function ManageDevices() {
                   filter === f.key
                     ? "bg-white text-slate-800 shadow-sm border border-slate-200"
                     : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
+                }`}>
                 {f.label}
-                {/* <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                  f.key === "revoked"  ? "bg-rose-100 text-rose-600"  :
-                  f.key === "signed"   ? "bg-blue-100 text-blue-600"  :
-                  f.key === "unsigned" ? "bg-amber-100 text-amber-600":
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                  f.key === "revoked"  ? "bg-rose-100 text-rose-600"   :
+                  f.key === "signed"   ? "bg-blue-100 text-blue-600"   :
+                  f.key === "unsigned" ? "bg-amber-100 text-amber-600" :
                   "bg-slate-200 text-slate-600"
                 }`}>
                   {counts[f.key]}
-                </span> */}
+                </span>
               </button>
             ))}
           </div>
@@ -229,7 +226,6 @@ export default function ManageDevices() {
             style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr 2fr" }}>
             <span>Device</span>
             <span>Device ID</span>
-          
             <span>Location</span>
             <span>Certificate</span>
             <span>Date Added</span>
@@ -251,17 +247,18 @@ export default function ManageDevices() {
             </div>
           ) : (
             filtered.map((device) => {
-              const status   = device.certStatus;
-              const isSigned = status === "signed";
+              const status    = device.certStatus ?? "unsigned";
+              const isSigned  = status === "signed";
               const isRevoked = status === "revoked";
+              const canEdit   = status === "unsigned";
 
               return (
                 <div key={device.id}
                   className={`grid items-center px-5 py-3.5 border-t border-slate-100 text-sm transition
                     ${isRevoked ? "bg-rose-50/30 hover:bg-rose-50/50" : "text-slate-700 hover:bg-blue-50/40"}`}
-                  style={{ gridTemplateColumns: "1.5fr 1fr  1fr 1fr 1fr 2fr" }}
+                  style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr 2fr" }}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                       isRevoked ? "bg-rose-50 border border-rose-100 text-rose-400"
                                 : "bg-blue-50 border border-blue-100 text-blue-500"
@@ -272,19 +269,16 @@ export default function ManageDevices() {
                   </div>
 
                   <span className="font-mono text-xs text-slate-500">{device.deviceId}</span>
-                  
                   <span className="text-slate-600 text-[13px]">{device.location}</span>
                   <span>{statusBadge[status] || statusBadge.unsigned}</span>
                   <span className="text-xs text-slate-400">{device.dateAdded}</span>
 
-                  {/* Actions */}
-                  <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                  <div className="flex items-center justify-end gap-1 flex-wrap">
                     <button onClick={() => setViewTarget(device)}
                       className="flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-blue-200 transition">
                       <IconEye /> View
                     </button>
 
-                    {/* Sign — unsigned only */}
                     {status === "unsigned" && (
                       <button onClick={() => setSignTarget(device)}
                         className="flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-emerald-200 transition">
@@ -292,17 +286,16 @@ export default function ManageDevices() {
                       </button>
                     )}
 
-                    {/* Edit — unsigned only, locked for signed & revoked */}
                     <button
-                      onClick={() => status === "unsigned" && setEditTarget(device)}
-                      disabled={status !== "unsigned"}
+                      onClick={() => canEdit && setEditTarget(device)}
+                      disabled={!canEdit}
                       title={
                         isSigned  ? "Revoke certificate before editing" :
                         isRevoked ? "Device is revoked and cannot be edited" :
                         "Edit device"
                       }
                       className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition ${
-                        status !== "unsigned"
+                        !canEdit
                           ? "text-slate-300 border-slate-100 cursor-not-allowed"
                           : "text-slate-500 hover:text-blue-600 hover:bg-blue-50 border-slate-200 hover:border-blue-200"
                       }`}
@@ -328,9 +321,15 @@ export default function ManageDevices() {
         )}
       </div>
 
-      {/* Modals */}
+      {/* ── Modals ─────────────────────────────────────────────────────────── */}
+
       {viewTarget && (
-        <ViewDeviceModal device={viewTarget} onClose={() => setViewTarget(null)} onRevoke={handleRevoke} />
+        <ViewDeviceModal
+          device={viewTarget}
+          onClose={() => setViewTarget(null)}
+          onRevoke={handleRevoke}
+          onSigned={handleSigned}   
+        />
       )}
       {signTarget && (
         <SignCertificateModal device={signTarget} onClose={() => setSignTarget(null)} onSigned={handleSigned} />

@@ -8,44 +8,20 @@ function generateCertificateSerial() {
     .join(":");
 }
 
-// Auto-generate next sequential device ID
-async function generateDeviceId() {
-  const result = await pool.query(
-    `SELECT device_id FROM devices
-     WHERE device_id ~ '^DEV-[0-9]+$'
-     ORDER BY CAST(SUBSTRING(device_id FROM 5) AS INTEGER) DESC
-     LIMIT 1`
-  );
-  if (result.rows.length === 0) return "DEV-001";
-  const num = parseInt(result.rows[0].device_id.replace("DEV-", ""), 10);
-  return `DEV-${String(num + 1).padStart(3, "0")}`;
-}
-
 const SELECT_FIELDS = `
   id,
   name,
-  device_id                                AS "deviceId",
-  mac_address                              AS "macAddress",
+  deveui                                   AS "deviceId",
   location,
   certificate,
+  hmac_length                              AS "hmacLength",
   cert_status                              AS "certStatus",
   TO_CHAR(date_added,     'Mon DD, YYYY')  AS "dateAdded",
   TO_CHAR(certified_date, 'Mon DD, YYYY')  AS "certifiedDate",
   TO_CHAR(revoked_date,   'Mon DD, YYYY')  AS "revokedDate"
 `;
 
-// ── GET next auto-generated device ID (preview only, not saved) ───────────────
-export async function getNextDeviceId(req, res) {
-  try {
-    const deviceId = await generateDeviceId();
-    return res.status(200).json({ deviceId });
-  } catch (err) {
-    console.error("getNextDeviceId error:", err.message);
-    return res.status(500).json({ message: "Server error" });
-  }
-}
-
-// ── GET all devices ───────────────────────────────────────────────────────────
+// ── GET /api/devices ───────────────────────────────────────────────────────
 export async function getAllDevices(req, res) {
   try {
     const result = await pool.query(
@@ -58,7 +34,7 @@ export async function getAllDevices(req, res) {
   }
 }
 
-// ── GET single device ─────────────────────────────────────────────────────────
+// ── GET /api/devices/:id ───────────────────────────────────────────────────
 export async function getDevice(req, res) {
   const { id } = req.params;
   try {
@@ -75,60 +51,66 @@ export async function getDevice(req, res) {
   }
 }
 
-// ── POST add device — device_id auto-generated ────────────────────────────────
+// ── POST /api/devices ──────────────────────────────────────────────────────
 export async function addDevice(req, res) {
-  const { name, macAddress, location } = req.body;
+  const { name, location, devEUI, hmacLength, certificate } = req.body;
 
-  if (!name || !macAddress || !location) {
-    return res.status(400).json({ message: "Name, MAC Address, and Location are required" });
+  if (!name || !location || !devEUI) {
+    return res.status(400).json({ message: "Name, location, and DevEUI are required" });
+  }
+
+  const normalizedEUI = devEUI.toUpperCase();
+  if (!/^[0-9A-F]{16}$/.test(normalizedEUI)) {
+    return res.status(400).json({ message: "DevEUI must be exactly 16 hex characters" });
+  }
+
+  const isUnsigned = !certificate || certificate === "UNSIGNED";
+  const certValue  = isUnsigned ? null : certificate;
+  const certStatus = isUnsigned ? "unsigned" : "signed";
+
+  if (!isUnsigned && !certificate.includes(":")) {
+    return res.status(400).json({ message: "Invalid certificate serial format" });
   }
 
   try {
-    const dupMac = await pool.query(
-      "SELECT id FROM devices WHERE mac_address = $1", [macAddress]
+    const existing = await pool.query(
+      "SELECT id FROM devices WHERE deveui = $1", [normalizedEUI]
     );
-    if (dupMac.rows.length > 0) {
-      return res.status(409).json({ message: "MAC address already registered" });
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ message: "Device with this DevEUI already exists" });
     }
 
-    // Generate inside a transaction to avoid race conditions
-    const client = await pool.connect();
-    let device;
-    try {
-      await client.query("BEGIN");
-      const deviceId = await generateDeviceId();
-      const result = await client.query(
-        `INSERT INTO devices (name, device_id, mac_address, location)
-         VALUES ($1, $2, $3, $4)
+    let result;
+    if (isUnsigned) {
+      result = await pool.query(
+        `INSERT INTO devices (name, deveui, location, hmac_length, cert_status, date_added)
+         VALUES ($1, $2, $3, $4, 'unsigned', NOW())
          RETURNING ${SELECT_FIELDS}`,
-        [name, deviceId, macAddress, location]
+        [name, normalizedEUI, location, hmacLength || 16]
       );
-      await client.query("COMMIT");
-      device = result.rows[0];
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
+    } else {
+      result = await pool.query(
+        `INSERT INTO devices (name, deveui, location, certificate, hmac_length, cert_status, certified_date, date_added)
+         VALUES ($1, $2, $3, $4, $5, 'signed', NOW(), NOW())
+         RETURNING ${SELECT_FIELDS}`,
+        [name, normalizedEUI, location, certValue, hmacLength || 16]
+      );
     }
 
-    return res.status(201).json({
-      message: `Device added with ID ${device.deviceId}`,
-      device,
-    });
+    return res.status(201).json({ message: "Device enrolled successfully", device: result.rows[0] });
   } catch (err) {
     console.error("addDevice error:", err.message);
     return res.status(500).json({ message: "Server error" });
   }
 }
 
-// ── PUT edit device — blocked if signed OR revoked ────────────────────────────
+// ── PUT /api/devices/:id ───────────────────────────────────────────────────
 export async function editDevice(req, res) {
-  const { id }                         = req.params;
-  const { name, macAddress, location } = req.body;
+  const { id }             = req.params;
+  const { name, location } = req.body;
 
-  if (!name || !macAddress || !location) {
-    return res.status(400).json({ message: "Name, MAC Address, and Location are required" });
+  if (!name || !location) {
+    return res.status(400).json({ message: "Name and location are required" });
   }
 
   try {
@@ -138,44 +120,22 @@ export async function editDevice(req, res) {
     if (existing.rows.length === 0) {
       return res.status(404).json({ message: "Device not found" });
     }
-
     const status = existing.rows[0].cert_status;
-    if (status === "signed") {
-      return res.status(403).json({ message: "Cannot edit a device with a signed certificate. Revoke it first." });
-    }
-    if (status === "revoked") {
-      return res.status(403).json({ message: "Cannot edit a revoked device." });
-    }
+    if (status === "signed")  return res.status(403).json({ message: "Cannot edit a signed device. Revoke first." });
+    if (status === "revoked") return res.status(403).json({ message: "Cannot edit a revoked device." });
 
-    const dupMac = await pool.query(
-      "SELECT id FROM devices WHERE mac_address = $1 AND id != $2", [macAddress, id]
-    );
-    if (dupMac.rows.length > 0) {
-      return res.status(409).json({ message: "MAC address already in use" });
-    }
-
-    // device_id is never changed on edit
     const result = await pool.query(
-      `UPDATE devices
-       SET name        = $1,
-           mac_address = $2,
-           location    = $3
-       WHERE id = $4
-       RETURNING ${SELECT_FIELDS}`,
-      [name, macAddress, location, id]
+      `UPDATE devices SET name = $1, location = $2 WHERE id = $3 RETURNING ${SELECT_FIELDS}`,
+      [name, location, id]
     );
-
-    return res.status(200).json({
-      message: "Device updated successfully",
-      device:  result.rows[0],
-    });
+    return res.status(200).json({ message: "Device updated successfully", device: result.rows[0] });
   } catch (err) {
     console.error("editDevice error:", err.message);
     return res.status(500).json({ message: "Server error" });
   }
 }
 
-// ── DELETE remove device ──────────────────────────────────────────────────────
+// ── DELETE /api/devices/:id ────────────────────────────────────────────────
 export async function deleteDevice(req, res) {
   const { id } = req.params;
   try {
@@ -185,16 +145,14 @@ export async function deleteDevice(req, res) {
     if (result.rows.length === 0) {
       return res.status(404).json({ message: "Device not found" });
     }
-    return res.status(200).json({
-      message: `Device "${result.rows[0].name}" removed successfully`,
-    });
+    return res.status(200).json({ message: `Device "${result.rows[0].name}" removed successfully` });
   } catch (err) {
     console.error("deleteDevice error:", err.message);
     return res.status(500).json({ message: "Server error" });
   }
 }
 
-// ── GET generate certificate preview ─────────────────────────────────────────
+// ── GET /api/devices/generate-certificate ─────────────────────────────────
 export async function generateCertificate(req, res) {
   try {
     return res.status(200).json({ certificate: generateCertificateSerial() });
@@ -203,22 +161,22 @@ export async function generateCertificate(req, res) {
   }
 }
 
-// ── PUT sign certificate ──────────────────────────────────────────────────────
+// ── PUT /api/devices/:id/sign-certificate ─────────────────────────────────
 export async function signCertificate(req, res) {
   const { id }          = req.params;
   const { certificate } = req.body;
 
   if (!certificate) {
-    return res.status(400).json({ message: "Certificate serial is required" });
+    return res.status(400).json({ message: "Certificate is required" });
   }
 
   try {
     const existing = await pool.query(
       "SELECT id, cert_status FROM devices WHERE id = $1", [id]
     );
-    if (existing.rows.length === 0) {
-      return res.status(404).json({ message: "Device not found" });
-    }
+    if (existing.rows.length === 0) return res.status(404).json({ message: "Device not found" });
+
+    // Allow re-signing a revoked device (the frontend Re-sign flow calls this)
     if (existing.rows[0].cert_status === "signed") {
       return res.status(409).json({ message: "Device already has a signed certificate" });
     }
@@ -233,27 +191,21 @@ export async function signCertificate(req, res) {
        RETURNING ${SELECT_FIELDS}`,
       [certificate, id]
     );
-
-    return res.status(200).json({
-      message: "Certificate signed successfully",
-      device:  result.rows[0],
-    });
+    return res.status(200).json({ message: "Certificate signed successfully", device: result.rows[0] });
   } catch (err) {
     console.error("signCertificate error:", err.message);
     return res.status(500).json({ message: "Server error" });
   }
 }
 
-// ── PUT revoke certificate ────────────────────────────────────────────────────
+// ── PUT /api/devices/:id/revoke-certificate ───────────────────────────────
 export async function revokeCertificate(req, res) {
   const { id } = req.params;
   try {
     const existing = await pool.query(
       "SELECT id, cert_status FROM devices WHERE id = $1", [id]
     );
-    if (existing.rows.length === 0) {
-      return res.status(404).json({ message: "Device not found" });
-    }
+    if (existing.rows.length === 0) return res.status(404).json({ message: "Device not found" });
     if (existing.rows[0].cert_status !== "signed") {
       return res.status(400).json({ message: "Only signed certificates can be revoked" });
     }
@@ -267,7 +219,6 @@ export async function revokeCertificate(req, res) {
        RETURNING ${SELECT_FIELDS}`,
       [id]
     );
-
     return res.status(200).json({
       message: `Certificate revoked for "${result.rows[0].name}"`,
       device:  result.rows[0],
@@ -275,5 +226,130 @@ export async function revokeCertificate(req, res) {
   } catch (err) {
     console.error("revokeCertificate error:", err.message);
     return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// ── Utility: check whether a table exists in the public schema ─────────────
+async function tableExists(tableName) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = $1
+     LIMIT 1`,
+    [tableName]
+  );
+  return rows.length > 0;
+}
+
+// ── GET /api/devices/:id/data ──────────────────────────────────────────────
+// Returns sensor readings for a single device.
+// Gracefully returns an empty array if sensor_readings does not exist yet.
+export async function getDeviceData(req, res) {
+  const { id }  = req.params;
+  const limit   = Math.min(parseInt(req.query.limit  ?? "200", 10), 500);
+  const offset  = parseInt(req.query.offset ?? "0", 10);
+
+  try {
+    const deviceCheck = await pool.query(
+      "SELECT id, name FROM devices WHERE id = $1", [id]
+    );
+    if (deviceCheck.rows.length === 0) {
+      return res.status(404).json({ message: "Device not found" });
+    }
+
+    // Return empty result gracefully when the readings table doesn't exist yet
+    if (!(await tableExists("sensor_readings"))) {
+      return res.status(200).json({
+        deviceId: deviceCheck.rows[0].id,
+        name:     deviceCheck.rows[0].name,
+        total:    0,
+        limit,
+        offset,
+        readings: [],
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         sr.id,
+         sr.temperature,
+         sr.humidity,
+         sr.soil_moisture                                 AS "soilMoisture",
+         sr.rainfall,
+         sr.certificate,
+         TO_CHAR(sr.received_at, 'Mon DD, YYYY HH24:MI') AS "timestamp"
+       FROM sensor_readings sr
+       WHERE sr.device_id = $1
+       ORDER BY sr.received_at DESC
+       LIMIT $2 OFFSET $3`,
+      [id, limit, offset]
+    );
+
+    const countResult = await pool.query(
+      "SELECT COUNT(*) AS total FROM sensor_readings WHERE device_id = $1", [id]
+    );
+
+    return res.status(200).json({
+      deviceId: deviceCheck.rows[0].id,
+      name:     deviceCheck.rows[0].name,
+      total:    parseInt(countResult.rows[0].total, 10),
+      limit,
+      offset,
+      readings: result.rows,
+    });
+  } catch (err) {
+    console.error("getDeviceData error:", err.message);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// ── GET /api/devices/data/all ──────────────────────────────────────────────
+// Returns all sensor readings joined with device info.
+// Returns an EMPTY 200 response (not 500) when sensor_readings doesn't exist.
+// This prevents the "All Received Data" card from showing a server error
+// before the IoT devices have sent any data.
+export async function getAllDeviceData(req, res) {
+  const limit  = Math.min(parseInt(req.query.limit  ?? "200", 10), 500);
+  const offset = parseInt(req.query.offset ?? "0", 10);
+
+  try {
+    // ── Guard: table does not exist yet → return empty, not 500 ───────────
+    if (!(await tableExists("sensor_readings"))) {
+      return res.status(200).json({ total: 0, limit, offset, readings: [] });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         sr.id,
+         d.name                                           AS device,
+         d.deveui                                         AS "deviceId",
+         sr.temperature,
+         sr.humidity,
+         sr.soil_moisture                                 AS "soilMoisture",
+         sr.rainfall,
+         sr.certificate,
+         TO_CHAR(sr.received_at, 'Mon DD, YYYY HH24:MI') AS "timestamp"
+       FROM   sensor_readings sr
+       JOIN   devices d ON d.id = sr.device_id
+       ORDER  BY sr.received_at DESC
+       LIMIT  $1 OFFSET $2`,
+      [limit, offset]
+    );
+
+    const countResult = await pool.query(
+      "SELECT COUNT(*) AS total FROM sensor_readings"
+    );
+
+    return res.status(200).json({
+      total:    parseInt(countResult.rows[0].total, 10),
+      limit,
+      offset,
+      readings: result.rows,
+    });
+  } catch (err) {
+    console.error("getAllDeviceData error:", err.message);
+    return res.status(500).json({
+      message: "Server error",
+      ...(process.env.NODE_ENV !== "production" && { detail: err.message }),
+    });
   }
 }

@@ -2,21 +2,28 @@ import { useState, useEffect } from "react";
 import { Modal } from "./ModalBase";
 import api from "../../services/api";
 
+const IconCert = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" className="w-4 h-4">
+    <path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+  </svg>
+);
+
 export default function SignCertificateModal({ device, onClose, onSigned }) {
   const [certificate, setCertificate] = useState("");
-  const [loading, setLoading]         = useState(false);
-  const [generating, setGenerating]   = useState(true);
-  const [error, setError]             = useState("");
+  const [loading,     setLoading]     = useState(false);
+  const [generating,  setGenerating]  = useState(true);
+  const [error,       setError]       = useState("");
 
-  // Fetch a randomly generated certificate serial on open
+  // ── Auto-fetch certificate from CA on modal open (no manual fetch button) ─
   useEffect(() => {
     const generate = async () => {
       setGenerating(true);
+      setError("");
       try {
         const { data } = await api.get("/devices/generate-certificate");
         setCertificate(data.certificate);
       } catch {
-        setError("Failed to generate certificate");
+        setError("Failed to fetch certificate from CA. Please close and try again.");
       } finally {
         setGenerating(false);
       }
@@ -25,6 +32,7 @@ export default function SignCertificateModal({ device, onClose, onSigned }) {
   }, []);
 
   const handleSign = async () => {
+    if (!certificate) return;
     setLoading(true);
     setError("");
     try {
@@ -57,23 +65,28 @@ export default function SignCertificateModal({ device, onClose, onSigned }) {
           </div>
         </div>
 
-        {/* Certificate preview */}
+        {/* Certificate fetched from CA */}
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-semibold text-slate-600">Generated Certificate Serial</p>
+          <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+            <IconCert />
+            Certificate Fetched from CA
+          </p>
+
           {generating ? (
-            <div className="flex items-center gap-2 text-slate-400 text-xs py-3">
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <div className="flex items-center gap-2 text-slate-400 text-xs bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+              <svg className="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
               </svg>
-              Generating certificate…
+              Fetching certificate from CA…
             </div>
-          ) : (
+          ) : certificate ? (
             <div className="bg-blue-50/50 border border-blue-200 rounded-xl px-4 py-3">
               <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-1">Certificate Serial</p>
               <p className="font-mono text-[12px] text-slate-800 break-all">{certificate}</p>
             </div>
-          )}
+          ) : null}
+
           <p className="text-[11px] text-slate-400">
             This certificate will be permanently bound to this device and cannot be modified after signing.
           </p>
@@ -86,17 +99,17 @@ export default function SignCertificateModal({ device, onClose, onSigned }) {
           </div>
         )}
 
-        {/* Actions */}
+        {/* Actions: Sign Now | Unsigned (sign later) */}
         <div className="flex gap-3 pt-1">
           <button
             onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-sm hover:bg-slate-50 transition"
+            className="flex-1 py-2.5 rounded-xl border border-amber-300 text-amber-600 text-sm font-medium hover:bg-amber-50 transition"
           >
-            Later
+            Unsigned
           </button>
           <button
             onClick={handleSign}
-            disabled={loading || generating}
+            disabled={loading || generating || !certificate}
             className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {loading ? "Signing…" : "Sign Certificate"}
