@@ -38,13 +38,90 @@ function DetailRow({ label, value, mono = false }) {
   );
 }
 
+// ── Certificate validity progress bar ─────────────────────────────────────────
+function ValidityBar({ issuedDate, expiryDate }) {
+  if (!issuedDate || !expiryDate) return null;
+
+  // Parse "Mon DD, YYYY" format (e.g. "Apr 05, 2025")
+  const issued  = new Date(issuedDate);
+  const expiry  = new Date(expiryDate);
+  const now     = new Date();
+
+  if (isNaN(issued) || isNaN(expiry)) return null;
+
+  const total   = expiry - issued;
+  const elapsed = now   - issued;
+  const pct     = Math.max(0, Math.min(100, (elapsed / total) * 100));
+  const daysLeft= Math.max(0, Math.round((expiry - now) / 86_400_000));
+  const isExpired = now > expiry;
+
+  const barColor = isExpired
+    ? "bg-rose-500"
+    : pct > 75 ? "bg-amber-500"
+    : "bg-emerald-500";
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="text-slate-500 font-medium">Certificate validity</span>
+        <span className={isExpired ? "text-rose-500 font-semibold" : pct > 75 ? "text-amber-600 font-semibold" : "text-emerald-600 font-semibold"}>
+          {isExpired ? "Expired" : `${daysLeft} days remaining`}
+        </span>
+      </div>
+      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="flex items-center justify-between text-[10px] text-slate-400">
+        <span>{issuedDate}</span>
+        <span>{expiryDate}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Single device cert row ─────────────────────────────────────────────────────
+function DeviceCertRow({ device, index }) {
+  const status = device.certStatus ?? "unsigned";
+  const badgeMap = {
+    signed:   "bg-blue-100 text-blue-700",
+    unsigned: "bg-amber-100 text-amber-700",
+    revoked:  "bg-rose-100 text-rose-600",
+  };
+  return (
+    <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition ${
+      index % 2 === 0 ? "bg-slate-50 border-slate-100" : "bg-white border-slate-100"
+    }`}>
+      <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-500 shrink-0">
+        <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" className="w-4 h-4">
+          <path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] font-semibold text-slate-800 truncate">{device.name}</p>
+        <p className="font-mono text-[10px] text-slate-400 truncate">{device.deviceId}</p>
+      </div>
+      <div className="flex flex-col items-end gap-0.5 shrink-0">
+        <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${badgeMap[status] || badgeMap.unsigned}`}>
+          {status.charAt(0).toUpperCase() + status.slice(1)}
+        </span>
+        {device.certifiedDate && (
+          <span className="text-[10px] text-slate-400">{device.certifiedDate}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Profile() {
   const user         = getUserFromToken();
   const fileInputRef = useRef(null);
 
-  const [avatar, setAvatar]           = useState(null);
-  const [certDevice, setCertDevice]   = useState(null);
-  const [loadingCert, setLoadingCert] = useState(true);
+  const [avatar,       setAvatar]       = useState(null);
+  const [allDevices,   setAllDevices]   = useState([]);
+  const [loadingCert,  setLoadingCert]  = useState(true);
 
   const fullName = [capitalize(user?.first_name), capitalize(user?.last_name)].filter(Boolean).join(" ") || "User";
   const initials = [user?.first_name, user?.last_name].filter(Boolean).map((n) => n.charAt(0).toUpperCase()).join("") || "?";
@@ -57,19 +134,17 @@ export default function Profile() {
   }, []);
 
   useEffect(() => {
-    const fetchCert = async () => {
+    (async () => {
       setLoadingCert(true);
       try {
         const { data } = await api.get("/devices");
-        const signed = data.devices.find((d) => d.certStatus === "signed" && d.certificate);
-        setCertDevice(signed || null);
+        setAllDevices(data.devices || []);
       } catch {
-        setCertDevice(null);
+        setAllDevices([]);
       } finally {
         setLoadingCert(false);
       }
-    };
-    fetchCert();
+    })();
   }, []);
 
   const handleFileChange = (e) => {
@@ -91,22 +166,37 @@ export default function Profile() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // Certificate-derived data
+  const signedDevices   = allDevices.filter((d) => d.certStatus === "signed"  && d.certificate);
+  const revokedDevices  = allDevices.filter((d) => d.certStatus === "revoked");
+  const primaryCert     = signedDevices[0] || null; // first signed device as the "profile" cert
+
+  // Derive expiry: certifiedDate + 730 days (2 years) as a reasonable default
+  const deriveExpiry = (certifiedDate) => {
+    if (!certifiedDate) return null;
+    const d = new Date(certifiedDate);
+    if (isNaN(d)) return null;
+    d.setFullYear(d.getFullYear() + 2);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  const expiryDate = primaryCert ? deriveExpiry(primaryCert.certifiedDate) : null;
+
+  // CA info — derived from the Fabric CA endpoint pattern in the routes
+  const CA_NAME    = "Hyperledger Fabric CA";
+  const CA_ORG     = "IoT Monitoring System";
+
   return (
     <div className="flex flex-col gap-6 w-full max-w-4xl mx-auto">
 
-      {/* Profile card */}
+      {/* ── Profile card ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-
-        {/* Banner — taller so avatar + name sit fully below it */}
         <div className="h-32 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 relative">
           <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_30%_50%,#3b82f6,transparent)]" />
         </div>
 
         <div className="px-8 pb-8">
-          {/* Avatar row — pushed up over the banner */}
           <div className="flex items-end gap-5 -mt-12 mb-2">
-
-            {/* Avatar */}
             <div className="relative shrink-0">
               <div className="w-24 h-24 rounded-2xl border-4 border-white shadow-md overflow-hidden bg-blue-500 flex items-center justify-center">
                 {avatar ? (
@@ -125,18 +215,13 @@ export default function Profile() {
               <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
             </div>
 
-            {/* Remove photo — floated right, aligned to bottom */}
             {avatar && (
-              <button
-                onClick={handleRemoveAvatar}
-                className="ml-auto mb-1 text-xs text-slate-400 hover:text-rose-500 transition"
-              >
+              <button onClick={handleRemoveAvatar} className="ml-auto mb-1 text-xs text-slate-400 hover:text-rose-500 transition">
                 Remove photo
               </button>
             )}
           </div>
 
-          {/* Name + badge — below the avatar row with proper spacing */}
           <div className="mt-3 mb-6">
             <h2 className="text-xl font-semibold text-slate-800 leading-tight">{fullName}</h2>
             <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 mt-1.5">
@@ -145,7 +230,6 @@ export default function Profile() {
             </span>
           </div>
 
-          {/* Detail grid — 4 columns on wide layout */}
           <div className="grid grid-cols-4 gap-x-8 gap-y-5 border-t border-slate-100 pt-6">
             <DetailRow label="Full Name" value={fullName} />
             <DetailRow label="Email"     value={email}    mono />
@@ -155,19 +239,27 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Certificate card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col gap-4">
+      {/* ── Certificate card ──────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col gap-5">
+
+        {/* Header */}
         <div className="flex items-center gap-2">
-          <span className={loadingCert ? "text-slate-300" : certDevice ? "text-blue-600" : "text-slate-400"}>
+          <span className={loadingCert ? "text-slate-300" : primaryCert ? "text-blue-600" : "text-slate-400"}>
             <IconCertificate />
           </span>
           <h3 className="text-[14px] font-medium text-slate-800">Digital Certificate</h3>
           {!loadingCert && (
-            <span className={`ml-auto text-[11px] font-medium px-2.5 py-0.5 rounded-full ${
-              certDevice ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
-            }`}>
-              {certDevice ? "Active" : "Not Issued"}
-            </span>
+            <div className="ml-auto flex items-center gap-2">
+              {/* Device count badge */}
+              <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                {signedDevices.length} device{signedDevices.length !== 1 ? "s" : ""} issued
+              </span>
+              <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full ${
+                primaryCert ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
+              }`}>
+                {primaryCert ? "Active" : "Not Issued"}
+              </span>
+            </div>
           )}
         </div>
 
@@ -177,40 +269,76 @@ export default function Profile() {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
             </svg>
-            Loading certificate…
+            Loading certificates…
           </div>
         )}
 
-        {!loadingCert && certDevice && (
-          <div className="flex flex-col gap-4">
+        {!loadingCert && primaryCert && (
+          <div className="flex flex-col gap-5">
+
             {/* Certificate serial */}
             <div className="bg-blue-50/50 border border-blue-200 rounded-xl px-4 py-3 flex flex-col gap-1">
               <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Certificate Serial</span>
-              <span className="font-mono text-[12px] text-slate-800 break-all">{certDevice.certificate}</span>
+              <span className="font-mono text-[12px] text-slate-800 break-all">{primaryCert.certificate}</span>
             </div>
 
-            {/* Meta info — 4 columns */}
-            <div className="grid grid-cols-4 gap-x-8 gap-y-3 border-t border-slate-100 pt-4">
-              <div className="flex flex-col gap-1 col-span-2">
-                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Bound to Device</span>
-                <span className="text-sm text-slate-800 font-medium">{certDevice.name}</span>
-                <span className="text-[11px] text-slate-400 font-mono">{certDevice.deviceId}</span>
+            {/* Validity progress bar */}
+            <ValidityBar issuedDate={primaryCert.certifiedDate} expiryDate={expiryDate} />
+
+            {/* Main info grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-4 border-t border-slate-100 pt-4">
+
+              {/* Issued by */}
+              <div className="flex flex-col gap-1 col-span-2 sm:col-span-1">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Issued By</span>
+                <span className="text-sm text-slate-800 font-semibold">{CA_NAME}</span>
+                <span className="text-[11px] text-slate-500">{CA_ORG}</span>
               </div>
+
+              {/* Date issued */}
               <div className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Signed On</span>
-                <span className="text-sm text-slate-800 font-medium">{certDevice.certifiedDate || "—"}</span>
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Date Issued</span>
+                <span className="text-sm text-slate-800 font-medium">{primaryCert.certifiedDate || "—"}</span>
               </div>
+
+              {/* Expiry */}
               <div className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Location</span>
-                <span className="text-sm text-slate-800 font-medium">{certDevice.location || "—"}</span>
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Expires On</span>
+                <span className={`text-sm font-medium ${expiryDate && new Date(expiryDate) < new Date() ? "text-rose-600" : "text-slate-800"}`}>
+                  {expiryDate || "—"}
+                </span>
+              </div>
+
+              {/* Devices issued count */}
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Devices Issued</span>
+                <span className="text-2xl font-bold font-mono text-blue-600 leading-tight">{signedDevices.length}</span>
+                {revokedDevices.length > 0 && (
+                  <span className="text-[11px] text-rose-500">{revokedDevices.length} revoked</span>
+                )}
               </div>
             </div>
+
+            {/* Bound device reference */}
+            
+
+            {/* All devices with certificates */}
+            {signedDevices.length > 1 && (
+              <div className="flex flex-col gap-2 border-t border-slate-100 pt-4">
+                <p className="text-[11px] uppercase tracking-wider text-slate-400 font-medium mb-1">
+                  All Devices with Issued Certificates ({signedDevices.length})
+                </p>
+                {signedDevices.map((d, i) => (
+                  <DeviceCertRow key={d.id} device={d} index={i} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {!loadingCert && !certDevice && (
+        {!loadingCert && !primaryCert && (
           <p className="text-xs text-slate-400">
-            No active certificate found. Sign a device certificate to have it appear here.
+            No active certificate found. Sign a device certificate from the Manage Devices page to have it appear here.
           </p>
         )}
       </div>

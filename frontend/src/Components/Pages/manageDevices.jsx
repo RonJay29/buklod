@@ -160,7 +160,7 @@ export default function ManageDevices() {
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-1 hover:shadow-md hover:shadow-blue-100 hover:border-blue-200 transition-all duration-200">
             <span className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">{s.label}</span>
-            <span className={`text-2xl font-semibold font-mono tracking-tight ${s.color}`}>{s.value}</span>
+            <span className={`text-2xl font-bold font-mono leading-tight tracking-tight  ${s.color}`}>{s.value}</span>
           </div>
         ))}
       </div>

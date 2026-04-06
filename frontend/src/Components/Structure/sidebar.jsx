@@ -103,10 +103,9 @@ export default function Sidebar({ activePage, setActivePage }) {
   };
 
   const handleProfile = () => {
-  setDropdownOpen(false);
-  navigate("/profile");          // navigates to /profile URL
-};
- 
+    setDropdownOpen(false);
+    setActivePage("Settings");
+  };
 
   return (
     <aside className={`
@@ -117,8 +116,14 @@ export default function Sidebar({ activePage, setActivePage }) {
     `}>
 
       {/* Logo */}
-      <div className={`flex items-center gap-3 px-5 py-6 border-b border-blue-800/40 ${collapsed ? "justify-center px-2" : ""}`}>
-        {!collapsed && (
+      <div className={`flex items-center border-b border-blue-800/40 transition-all duration-300 ${
+        collapsed ? "justify-center px-2 py-5" : "gap-3 px-5 py-6"
+      }`}>
+        {collapsed ? (
+          <span className="text-cyan-400 font-bold text-[13px] tracking-widest leading-none uppercase">
+            BKL
+          </span>
+        ) : (
           <span className="text-white font-semibold text-2xl tracking-tight leading-none">
             Buklod
           </span>
@@ -254,4 +259,4 @@ export default function Sidebar({ activePage, setActivePage }) {
       </div>
     </aside>
   );
-} 
+}
