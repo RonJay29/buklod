@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Modal } from "./ModalBase";
+import { Modal } from "./modalBase";
 import api from "../../services/api";
 
 const IconCert = () => (

@@ -1,4 +1,4 @@
-import { Modal } from "./ModalBase";
+import { Modal } from "./modalBase";
 
 export default function DeleteDeviceModal({ device, onClose, onConfirm }) {
   return (

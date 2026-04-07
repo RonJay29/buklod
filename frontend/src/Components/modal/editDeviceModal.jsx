@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Modal } from "./ModalBase";
+import { Modal } from "./modalBase";
 
 export default function editDeviceModal({ device, onClose, onSave }) {
   const [form, setForm]     = useState({ name: "", location: "" });

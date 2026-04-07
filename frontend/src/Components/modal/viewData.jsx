@@ -1,4 +1,4 @@
-import { Modal } from "./ModalBase";
+import { Modal } from "./modalBase";
 
 const IconCertificate = () => (
   <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" className="w-5 h-5">

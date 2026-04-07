@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL:         "http://localhost:5000/api",
+  baseURL:         "http://167.172.76.154:5000/api",
   withCredentials: true,   // sends the httpOnly refresh token cookie automatically
 });
 
@@ -77,3 +77,4 @@ api.interceptors.response.use(
 );
 
 export default api;
+
