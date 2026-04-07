@@ -3,6 +3,7 @@ import Dashboard     from "../Pages/dashboard";
 import ManageDevices from "../Pages/manageDevices";
 import DeviceData    from "../Pages/deviceData";
 import Profile       from "../Pages/profile";
+import Ledger        from "../Pages/ledger";
 
 const pageDescriptions = {
   Dashboard:        "Track, and monitor your devices.",
@@ -18,6 +19,7 @@ function PageRouter({ activePage }) {
     case "Manage Devices": return <ManageDevices />;
     case "Device's Data":  return <DeviceData />;
     case "Profile":        return <Profile />;
+    case "Ledger":         return <Ledger/>;
     default:
       return (
         <div className="flex flex-col items-center justify-center h-64 text-blue-300/50 text-sm gap-2">
@@ -62,12 +64,12 @@ export default function MainContent({ activePage }) {
           <span className="bg-blue-50 text-gray-700 border border-blue-200 text-xs font-mono px-3 py-1.5 rounded-full tabular-nums">
             {formatDateTime(now)}
           </span>
-          <button className="relative w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition">
+          {/* <button className="relative w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition">
             <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" className="w-4 h-4">
               <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
             <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-blue-500 rounded-full" />
-          </button>
+          </button> */}
         </div>
       </header>
 

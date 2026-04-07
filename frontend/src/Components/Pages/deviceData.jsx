@@ -169,7 +169,7 @@ export default function DeviceData() {
   const latestTs   = allData.length ? allData[0].timestamp : "—";
 
   const kpis = [
-    { label: "Total Data Received", value: allData.length,  suffix: "records", color: "text-blue-600",    small: false },
+    { label: "Total Packets Received", value: allData.length,  suffix: "records", color: "text-blue-600",    small: false },
     { label: "Total Devices",       value: devices.length,  suffix: "devices", color: "text-slate-800",   small: false },
     { label: "Received Today",      value: todayCount,       suffix: "records", color: "text-emerald-600", small: false },
     { label: "Latest Transmission", value: latestTs,         suffix: "",        color: "text-indigo-600",  small: true  },
