@@ -8,6 +8,7 @@ import {
   generateCertificate,
   signCertificate,
   revokeCertificate,
+   saveDeviceData,
   getDeviceData,       // ← NEW: GET /api/devices/:id/data
   getAllDeviceData,     // ← NEW: GET /api/devices/data/all
 } from "../controller/devices.controller.js";
@@ -36,6 +37,7 @@ router.get("/:id", getDevice);                              // GET  /api/devices
 
 // ── Per-device sensor data (any authenticated user) ────────────────────────
 router.get("/:id/data", getDeviceData);                     // GET  /api/devices/:id/data
+router.post("/:id/data",                     saveDeviceData);   
 
 // ── Admin-only mutations ───────────────────────────────────────────────────
 router.post(  "/",                       authorize("admin"), addDevice);

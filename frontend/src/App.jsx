@@ -22,6 +22,9 @@ export default function App() {
         <Route path="/ledger" element={
           <ProtectedRoute><MainLayout page="Ledger" /></ProtectedRoute>
         } />
+         <Route path="/invoked-datasets" element={
+          <ProtectedRoute><MainLayout page="Invoked Datasets" /></ProtectedRoute>
+        } />
         <Route path="/profile" element={
           <ProtectedRoute><MainLayout page="Profile" /></ProtectedRoute>
         } />

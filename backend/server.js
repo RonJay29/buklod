@@ -5,6 +5,7 @@ import dotenv       from "dotenv";
 import authRoutes    from "./src/routes/auth.routes.js";
 import deviceRoutes  from "./src/routes/device.routes.js";
 import fabricRoutes from "./src/routes/fabric.routes.js";
+import batchRoutes from "./src/routes/batch.routes.js";
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.use(cookieParser());
 app.use("/api/auth",    authRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/fabric", fabricRoutes);
+app.use("/api/batches", batchRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

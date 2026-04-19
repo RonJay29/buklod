@@ -4,10 +4,12 @@ import MainContent from "../Components/Structure/contentPage";
 
 // Maps sidebar display name → URL path
 const pageToPath = {
-  "Dashboard":      "/dashboard",
-  "Manage Devices": "/manage-devices",
-  "Device's Data":  "/device-data",
-  "Ledger":         "/ledger",
+  "Dashboard":        "/dashboard",
+  "Manage Devices":   "/manage-devices",
+  "Device's Data":    "/device-data",
+  "Ledger":           "/ledger",
+  "Invoked Datasets": "/invoked-datasets",
+  "Profile":          "/profile",
 };
 
 export default function MainLayout({ page }) {

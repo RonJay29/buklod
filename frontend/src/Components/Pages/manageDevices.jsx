@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import EditDeviceModal        from "../modal/editDeviceModal";
-import AddDeviceModal         from "../modal/addDeviceModal";
-import DeleteDeviceModal      from "../modal/deleteDeviceModal";
-import ViewDeviceModal        from "../modal/viewDeviceModal";
-import SignCertificateModal   from "../modal/Signcertificatemodal";
-import api                    from "../../services/api";
+import EditDeviceModal      from "../modal/editDeviceModal";
+import AddDeviceModal       from "../modal/addDeviceModal";
+import DeleteDeviceModal    from "../modal/deleteDeviceModal";
+import ViewDeviceModal      from "../modal/viewDeviceModal";
+import SignCertificateModal from "../modal/Signcertificatemodal";
+import api                  from "../../services/api";
 
 const IconEdit = () => (
   <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" className="w-4 h-4">
@@ -38,6 +38,8 @@ const IconDevice = () => (
   </svg>
 );
 
+const ROWS_PER_PAGE = 10;
+
 const FILTERS = [
   { key: "all",      label: "All"      },
   { key: "signed",   label: "Signed"   },
@@ -63,12 +65,53 @@ const statusBadge = {
   ),
 };
 
+// ── KPI card config — solid dark backgrounds ──────────────────────────────────
+const kpiConfig = [
+  { label:"Total Devices", key:"all",      bg:"bg-slate-800",   accent:"text-cyan-400",   icon:"M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" },
+  { label:"Signed",        key:"signed",   bg:"bg-blue-700",    accent:"text-blue-200",   icon:"M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" },
+  { label:"Unsigned",      key:"unsigned", bg:"bg-amber-700",   accent:"text-amber-200",  icon:"M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" },
+  { label:"Revoked",       key:"revoked",  bg:"bg-rose-800",    accent:"text-rose-200",   icon:"M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" },
+];
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+function Pagination({ page, totalPages, onPrev, onNext, onPage }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between pt-2">
+      <p className="text-xs text-slate-400">Page {page} of {totalPages}</p>
+      <div className="flex items-center gap-1">
+        <button onClick={onPrev} disabled={page === 1}
+          className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:border-blue-300 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition">
+          <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="w-3.5 h-3.5">
+            <path d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+          <button key={p} onClick={() => onPage(p)}
+            className={`w-8 h-8 flex items-center justify-center rounded-lg border text-xs font-medium transition ${
+              p === page
+                ? "bg-blue-600 text-white border-blue-600"
+                : "border-slate-200 text-slate-400 hover:border-blue-300 hover:text-blue-600"
+            }`}>{p}</button>
+        ))}
+        <button onClick={onNext} disabled={page === totalPages}
+          className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:border-blue-300 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition">
+          <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="w-3.5 h-3.5">
+            <path d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ManageDevices() {
   const [devices,      setDevices]      = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
   const [search,       setSearch]       = useState("");
   const [filter,       setFilter]       = useState("all");
+  const [page,         setPage]         = useState(1);
   const [viewTarget,   setViewTarget]   = useState(null);
   const [editTarget,   setEditTarget]   = useState(null);
   const [addOpen,      setAddOpen]      = useState(false);
@@ -93,7 +136,7 @@ export default function ManageDevices() {
   const handleAdd = async (form) => {
     try {
       const { data } = await api.post("/devices", form);
-      setDevices((prev) => [data.device, ...prev]);
+      setDevices(prev => [data.device, ...prev]);
     } catch (err) {
       alert(err.response?.data?.message || "Failed to add device");
     }
@@ -102,7 +145,7 @@ export default function ManageDevices() {
   const handleSaveEdit = async (form) => {
     try {
       const { data } = await api.put(`/devices/${editTarget.id}`, form);
-      setDevices((prev) => prev.map((d) => (d.id === editTarget.id ? data.device : d)));
+      setDevices(prev => prev.map(d => d.id === editTarget.id ? data.device : d));
     } catch (err) {
       alert(err.response?.data?.message || "Failed to update device");
     }
@@ -111,63 +154,76 @@ export default function ManageDevices() {
   const handleDelete = async (id) => {
     try {
       await api.delete(`/devices/${id}`);
-      setDevices((prev) => prev.filter((d) => d.id !== id));
+      setDevices(prev => prev.filter(d => d.id !== id));
     } catch (err) {
       alert(err.response?.data?.message || "Failed to delete device");
     }
   };
 
-  // Used by both SignCertificateModal AND ViewDeviceModal re-sign flow
   const handleSigned = (updatedDevice) => {
-    setDevices((prev) => prev.map((d) => (d.id === updatedDevice.id ? updatedDevice : d)));
+    setDevices(prev => prev.map(d => d.id === updatedDevice.id ? updatedDevice : d));
   };
 
   const handleRevoke = async (id) => {
     try {
       const { data } = await api.put(`/devices/${id}/revoke-certificate`);
-      setDevices((prev) => prev.map((d) => (d.id === id ? data.device : d)));
+      setDevices(prev => prev.map(d => d.id === id ? data.device : d));
     } catch (err) {
       alert(err.response?.data?.message || "Failed to revoke certificate");
     }
   };
 
-  const filtered = devices.filter((d) => {
+  const filtered = devices.filter(d => {
     const matchFilter = filter === "all" || d.certStatus === filter;
     const matchSearch =
-      d.name.toLowerCase().includes(search.toLowerCase())     ||
-      d.deviceId.toLowerCase().includes(search.toLowerCase()) ||
-      d.location.toLowerCase().includes(search.toLowerCase());
+      (d.name        || "").toLowerCase().includes(search.toLowerCase()) ||
+      (d.deviceId    || "").toLowerCase().includes(search.toLowerCase()) ||
+      (d.location    || "").toLowerCase().includes(search.toLowerCase()) ||
+      (d.description || "").toLowerCase().includes(search.toLowerCase());
     return matchFilter && matchSearch;
   });
 
   const counts = {
     all:      devices.length,
-    signed:   devices.filter((d) => d.certStatus === "signed").length,
-    unsigned: devices.filter((d) => d.certStatus === "unsigned").length,
-    revoked:  devices.filter((d) => d.certStatus === "revoked").length,
+    signed:   devices.filter(d => d.certStatus === "signed").length,
+    unsigned: devices.filter(d => d.certStatus === "unsigned").length,
+    revoked:  devices.filter(d => d.certStatus === "revoked").length,
   };
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
+  const paginated  = filtered.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE);
+
+  // Reset to page 1 on filter/search change
+  const handleFilterChange = (key) => { setFilter(key); setPage(1); };
+  const handleSearchChange = (e)   => { setSearch(e.target.value); setPage(1); };
 
   return (
     <div className="flex flex-col gap-6">
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: "Total Devices", value: counts.all,      color: "text-gray-700" },
-          { label: "Signed",        value: counts.signed,   color: "text-gray-700"  },
-          { label: "Unsigned",      value: counts.unsigned, color: "text-gray-700" },
-          { label: "Revoked",       value: counts.revoked,  color: "text-gray-700"  },
-        ].map((s) => (
-          <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-1 hover:shadow-md hover:shadow-blue-100 hover:border-blue-200 transition-all duration-200">
-            <span className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">{s.label}</span>
-            <span className={`text-2xl font-bold font-mono leading-tight tracking-tight  ${s.color}`}>{s.value}</span>
+      {/* ── KPI Cards — solid dark backgrounds ───────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {kpiConfig.map(k => (
+          <div key={k.label}
+            className={`${k.bg} rounded-xl p-4 sm:p-5 flex flex-col justify-between gap-3 shadow-sm hover:brightness-110 transition-all duration-200`}>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-widest text-white/60 font-semibold">{k.label}</span>
+              <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
+                <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"
+                  className={`w-4 h-4 ${k.accent}`}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d={k.icon} />
+                </svg>
+              </div>
+            </div>
+            <span className="text-2xl sm:text-3xl font-bold font-mono text-white leading-none tracking-tight">
+              {counts[k.key]}
+            </span>
           </div>
         ))}
       </div>
 
-      {/* Device list panel */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 flex flex-col gap-4">
-        <div className="flex items-center justify-between">
+      {/* ── Device list panel ─────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-8 flex flex-col gap-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-[15px] font-medium text-slate-800">All Devices</h2>
             <p className="text-sm text-slate-400 mt-0.5">Manage connected sensors and their certificates</p>
@@ -187,49 +243,43 @@ export default function ManageDevices() {
 
         {/* Filters + search */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl">
-            {FILTERS.map((f) => (
-              <button key={f.key} onClick={() => setFilter(f.key)}
+          <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl flex-wrap">
+            {FILTERS.map(f => (
+              <button key={f.key} onClick={() => handleFilterChange(f.key)}
                 className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all duration-150 ${
                   filter === f.key
-                    ? "bg-white text-slate-800 shadow-sm border border-slate-200"
+                    ? "bg-slate-700 text-slate-200 shadow-sm border border-slate-200"
                     : "text-slate-500 hover:text-slate-700"
                 }`}>
                 {f.label}
-                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                  f.key === "revoked"  ? "bg-slate-200 text-slate-600"   :
-                  f.key === "signed"   ? "bg-slate-200 text-slate-600"   :
-                  f.key === "unsigned" ? "bg-slate-200 text-slate-600" :
-                  "bg-slate-200 text-slate-600"
-                }`}>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600">
                   {counts[f.key]}
                 </span>
               </button>
             ))}
           </div>
-
           <div className="relative flex-1 min-w-[200px]">
             <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
               className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400">
               <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
             </svg>
-            <input type="text" placeholder="Search by name, ID, or location…"
-              value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition"
+            <input type="text" placeholder="Search by name, ID, location, or description…"
+              value={search} onChange={handleSearchChange}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-200 text-slate-800 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition"
             />
           </div>
         </div>
 
         {/* Table */}
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <div className="grid bg-slate-50 px-5 py-2.5 text-[11px] uppercase tracking-wider text-slate-400 font-medium border-b border-slate-200"
-            style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1.75fr" }}>
+        <div className="rounded-xl border border-slate-200 overflow-x-auto">
+          <div className="grid bg-slate-700 px-5 py-2.5 text-[11px] uppercase tracking-wider text-slate-200 font-medium border-b border-slate-200 min-w-[700px]"
+            style={{ gridTemplateColumns:"1.5fr 1fr 1fr 1.5fr 1fr auto" }}>
             <span>Device</span>
             <span>Device ID</span>
             <span>Location</span>
-            <span>Certificate</span>
-        
-            <span className="text-right">Actions</span>
+            <span>Description</span>
+            <span>Identity</span>
+            <span className="w-[124px] text-right">Actions</span>
           </div>
 
           {loading ? (
@@ -240,75 +290,110 @@ export default function ManageDevices() {
               </svg>
               Loading devices…
             </div>
-          ) : filtered.length === 0 ? (
+          ) : paginated.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-300 gap-2">
               <IconDevice />
               <span className="text-sm">No devices found</span>
             </div>
           ) : (
-            filtered.map((device) => {
-              const status    = device.certStatus ?? "unsigned";
-              const isSigned  = status === "signed";
-              const isRevoked = status === "revoked";
-              const canEdit   = status === "unsigned";
+            paginated.map(device => {
+              const status     = device.certStatus ?? "unsigned";
+              const isUnsigned = status === "unsigned";
+              const isSigned   = status === "signed";
+              const isRevoked  = status === "revoked";
 
               return (
                 <div key={device.id}
-                  className={`grid items-center px-5 py-3.5 gap-4 border-t border-slate-100 text-sm transition
+                  className={`grid items-start px-5 py-3.5 border-t border-slate-100 text-sm transition min-w-[700px]
                     ${isRevoked ? "bg-rose-50/30 hover:bg-rose-50/50" : "text-slate-700 hover:bg-blue-50/40"}`}
-                  style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1.75fr" }}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                  style={{ gridTemplateColumns:"1.5fr 1fr 1fr 1.5fr 1fr auto" }}>
+
+                  {/* Device name */}
+                  <div className="flex items-start gap-2 min-w-0 pr-2">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
                       isRevoked ? "bg-rose-50 border border-rose-100 text-rose-400"
-                                : "bg-blue-50 border border-blue-100 text-blue-500"
+                      : isSigned ? "bg-blue-50 border border-blue-100 text-blue-500"
+                      : "bg-amber-50 border border-amber-100 text-amber-500"
                     }`}>
                       <IconDevice />
                     </div>
-                    
-                      <p className="font-medium text-slate-800 text-[13px] break-words ">{device.name}</p>
-                    
-                    
+                    <p className="font-medium text-slate-800 text-[13px] break-words whitespace-normal leading-snug">
+                      {device.name}
+                    </p>
                   </div>
 
-                  <span className="font-mono text-xs text-slate-500">{device.deviceId}</span>
-                  <span className="text-slate-600 text-[13px] break-words">{device.location}</span>
-                  <span>{statusBadge[status] || statusBadge.unsigned}</span>
-                  
+                  {/* DevEUI */}
+                  <span className="font-mono text-xs text-slate-500 break-all whitespace-normal pr-2">
+                    {device.deviceId}
+                  </span>
 
-                  <div className="flex items-center justify-end gap-1 flex-wrap">
-                    <button onClick={() => setViewTarget(device)}
-                      className="flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-blue-200 transition">
-                      <IconEye /> View
-                    </button>
+                  {/* Location */}
+                  <span className="text-slate-600 text-[13px] break-words whitespace-normal pr-2">
+                    {device.location}
+                  </span>
 
-                    {status === "unsigned" && (
-                      <button onClick={() => setSignTarget(device)}
-                        className="flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-emerald-200 transition">
-                        <IconCert /> Sign
-                      </button>
-                    )}
+                  {/* Description */}
+                  <span className="text-slate-400 text-[12px] break-words whitespace-normal pr-2">
+                    {device.description || <span className="italic text-slate-300">—</span>}
+                  </span>
 
+                  {/* Identity */}
+                  <div className="pt-0.5">
+                    {statusBadge[status] || statusBadge.unsigned}
+                  </div>
+
+                  {/* ── Action buttons — coloured backgrounds ────────── */}
+                  <div className="flex items-center justify-end gap-1 w-[124px] shrink-0">
+
+                    {/* View — always active, blue */}
                     <button
-                      onClick={() => canEdit && setEditTarget(device)}
-                      disabled={!canEdit}
-                      title={
-                        isSigned  ? "Revoke certificate before editing" :
-                        isRevoked ? "Device is revoked and cannot be edited" :
-                        "Edit device"
-                      }
-                      className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition ${
-                        !canEdit
-                          ? "text-slate-300 border-slate-100 cursor-not-allowed"
-                          : "text-slate-500 hover:text-blue-600 hover:bg-blue-50 border-slate-200 hover:border-blue-200"
-                      }`}
-                    >
-                      <IconEdit /> Edit
+                      onClick={() => setViewTarget(device)}
+                      title="View details"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white transition">
+                      <IconEye />
                     </button>
 
-                    <button onClick={() => setDeleteTarget(device)}
-                      className="flex items-center gap-1 text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-rose-200 transition">
-                      <IconTrash /> 
+                    {/* Sign — emerald when available, grey when not */}
+                    <button
+                      onClick={() => isUnsigned && setSignTarget(device)}
+                      disabled={!isUnsigned}
+                      title={isUnsigned ? "Sign certificate" : "Already signed or revoked"}
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition ${
+                        isUnsigned
+                          ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-600 hover:text-white"
+                          : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                      }`}>
+                      <IconCert />
+                    </button>
+
+                    {/* Edit — blue when available, grey when not */}
+                    <button
+                      onClick={() => isUnsigned && setEditTarget(device)}
+                      disabled={!isUnsigned}
+                      title={
+                        isUnsigned ? "Edit device" :
+                        isSigned   ? "Revoke certificate before editing" :
+                        "Device is revoked and cannot be edited"
+                      }
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition ${
+                        isUnsigned
+                          ? "bg-slate-100 text-slate-600 hover:bg-slate-600 hover:text-white"
+                          : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                      }`}>
+                      <IconEdit />
+                    </button>
+
+                    {/* Delete — rose when available, grey when not */}
+                    <button
+                      onClick={() => isUnsigned && setDeleteTarget(device)}
+                      disabled={!isUnsigned}
+                      title={isUnsigned ? "Delete device" : "Cannot delete a signed or revoked device"}
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition ${
+                        isUnsigned
+                          ? "bg-rose-100 text-rose-600 hover:bg-rose-600 hover:text-white"
+                          : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                      }`}>
+                      <IconTrash />
                     </button>
                   </div>
                 </div>
@@ -317,35 +402,32 @@ export default function ManageDevices() {
           )}
         </div>
 
+        {/* Pagination + count */}
         {!loading && (
-          <p className="text-xs text-slate-400 text-right">
-            Showing {filtered.length} of {devices.length} device{devices.length !== 1 ? "s" : ""}
-          </p>
+          <>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              onPrev={() => setPage(p => Math.max(1, p - 1))}
+              onNext={() => setPage(p => Math.min(totalPages, p + 1))}
+              onPage={p => setPage(p)}
+            />
+            <p className="text-xs text-slate-400 text-right">
+              {filtered.length > ROWS_PER_PAGE
+                ? `Showing ${(page - 1) * ROWS_PER_PAGE + 1}–${Math.min(page * ROWS_PER_PAGE, filtered.length)} of ${filtered.length} device${filtered.length !== 1 ? "s" : ""}`
+                : `${filtered.length} of ${devices.length} device${devices.length !== 1 ? "s" : ""}`
+              }
+            </p>
+          </>
         )}
       </div>
 
-      {/* ── Modals ─────────────────────────────────────────────────────────── */}
-
-      {viewTarget && (
-        <ViewDeviceModal
-          device={viewTarget}
-          onClose={() => setViewTarget(null)}
-          onRevoke={handleRevoke}
-          onSigned={handleSigned}   
-        />
-      )}
-      {signTarget && (
-        <SignCertificateModal device={signTarget} onClose={() => setSignTarget(null)} onSigned={handleSigned} />
-      )}
-      {editTarget && (
-        <EditDeviceModal device={editTarget} onClose={() => setEditTarget(null)} onSave={handleSaveEdit} />
-      )}
-      {addOpen && (
-        <AddDeviceModal onClose={() => setAddOpen(false)} onAdd={handleAdd} />
-      )}
-      {deleteTarget && (
-        <DeleteDeviceModal device={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} />
-      )}
+      {/* Modals */}
+      {viewTarget   && <ViewDeviceModal      device={viewTarget}   onClose={() => setViewTarget(null)}   onRevoke={handleRevoke} onSigned={handleSigned} />}
+      {signTarget   && <SignCertificateModal device={signTarget}   onClose={() => setSignTarget(null)}   onSigned={handleSigned} />}
+      {editTarget   && <EditDeviceModal      device={editTarget}   onClose={() => setEditTarget(null)}   onSave={handleSaveEdit} />}
+      {addOpen      && <AddDeviceModal                             onClose={() => setAddOpen(false)}     onAdd={handleAdd} />}
+      {deleteTarget && <DeleteDeviceModal    device={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} />}
     </div>
   );
 }

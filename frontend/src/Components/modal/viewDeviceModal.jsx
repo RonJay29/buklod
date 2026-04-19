@@ -22,7 +22,9 @@ function DetailRow({ label, value, mono = false }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">{label}</span>
-      <span className={`text-sm text-slate-800 ${mono ? "font-mono" : "font-medium"}`}>{value || "—"}</span>
+      <span className={`text-sm text-slate-800 break-words ${mono ? "font-mono" : "font-medium"}`}>
+        {value || "—"}
+      </span>
     </div>
   );
 }
@@ -111,11 +113,10 @@ function ReSignPanel({ device, onSigned, onClose }) {
   );
 }
 
-// ── Main modal — owns its own overlay so it controls padding/scroll ────────
+// ── Main modal ─────────────────────────────────────────────────────────────
 export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned }) {
   const [showReSign, setShowReSign] = useState(false);
 
-  // Close on Escape
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -134,30 +135,18 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
   };
 
   return (
-    /*
-      Full-screen backdrop.
-      py-6 (or py-10 on sm+) ensures top AND bottom breathing room.
-      overflow-y-auto on the backdrop lets the whole overlay scroll on very
-      small / short screens — the card itself never clips against the viewport.
-    */
     <div
-      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm overflow-y-auto"
+      className="fixed bg-slate-800/50 inset-0 z-50 backdrop-blur-[2px] overflow-y-auto"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      {/*
-        Centering wrapper — min-h-full + flex keeps the card vertically
-        centred when content is short, but lets it grow past centre when
-        content is tall (Re-sign panel open etc.) while keeping the py-6
-        margin top + bottom.
-      */}
       <div className="min-h-full flex items-center justify-center px-4 py-6 sm:py-10">
 
-        {/* Card — max-w-md, NO fixed height, grows with content */}
+        {/* Card */}
         <div
           className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl shadow-slate-900/20 flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* ── Header bar ─────────────────────────────────────────────── */}
+          {/* Header */}
           <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
             <h2 className="text-[15px] font-semibold text-slate-800">Device Details</h2>
             <button
@@ -170,11 +159,11 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
             </button>
           </div>
 
-          {/* ── Scrollable body ─────────────────────────────────────────── */}
-          <div className="px-6 py-5 flex flex-col gap-5">
+          {/* ── Scrollable body ───────────────────────────────────────── */}
+          <div className="px-6 py-5 flex flex-col gap-5 overflow-y-auto max-h-[75vh]">
 
             {/* Device identity */}
-            <div className={`flex items-center gap-4 p-4 rounded-xl border ${
+            <div className={`flex items-start gap-4 p-4 rounded-xl border ${
               isRevoked ? "bg-rose-50/50 border-rose-200" : "bg-slate-50 border-slate-200"
             }`}>
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
@@ -184,8 +173,8 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
               }`}>
                 <IconDevice />
               </div>
-              <div>
-                <p className="font-semibold text-slate-800 text-[15px]">{device.name}</p>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-slate-800 text-[15px] break-words">{device.name}</p>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {isSigned && (
                     <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
@@ -206,17 +195,20 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
               </div>
             </div>
 
-            {/* Detail grid */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4 px-1">
+            {/* Detail grid — 2 col on sm+, 1 col on mobile */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 px-1">
               <DetailRow label="Device ID (DevEUI)" value={device.deviceId} mono />
               <DetailRow label="Location"           value={device.location} />
               <DetailRow label="Date Added"         value={device.dateAdded} />
-              <DetailRow label="HMAC Length"        value={device.hmacLength ? `${device.hmacLength} bytes` : "—"} />
+              {/* ── Description — full width, below Date Added ── */}
+              <div className="sm:col-span-2">
+                <DetailRow label="Description" value={device.description || "No description provided"} />
+              </div>
             </div>
 
             <div className="border-t border-slate-100" />
 
-            {/* ── Certificate — SIGNED ──────────────────────────────────── */}
+            {/* Certificate — SIGNED */}
             {isSigned && (
               <div className="rounded-xl border bg-blue-50/50 border-blue-200 p-4 flex flex-col gap-3">
                 <div className="flex items-center gap-2">
@@ -224,9 +216,9 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
                   <span className="text-[13px] font-semibold text-slate-700">Digital Certificate</span>
                   <span className="ml-auto text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">Signed</span>
                 </div>
-                <div className="bg-white border border-blue-100 rounded-lg px-3 py-2.5 break-all">
+                <div className="bg-white border border-blue-100 rounded-lg px-3 py-2.5">
                   <span className="text-[10px] uppercase tracking-wider text-slate-400 font-sans block mb-1">Certificate</span>
-                  <span className="font-mono text-[11px] text-slate-700 whitespace-pre-wrap">{device.certificate}</span>
+                  <span className="font-mono text-[11px] text-slate-700 break-all whitespace-pre-wrap">{device.certificate}</span>
                 </div>
                 {device.certifiedDate && (
                   <div className="flex items-center gap-1.5 text-xs text-blue-600">
@@ -239,7 +231,7 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
               </div>
             )}
 
-            {/* ── Certificate — REVOKED ─────────────────────────────────── */}
+            {/* Certificate — REVOKED */}
             {isRevoked && (
               <>
                 <div className="rounded-xl border bg-rose-50/50 border-rose-200 p-4 flex flex-col gap-3">
@@ -264,7 +256,6 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
                   </p>
                 </div>
 
-                {/* Re-sign toggle */}
                 {!showReSign ? (
                   <button
                     onClick={() => setShowReSign(true)}
@@ -279,7 +270,7 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
               </>
             )}
 
-            {/* ── Certificate — UNSIGNED ────────────────────────────────── */}
+            {/* Certificate — UNSIGNED */}
             {status === "unsigned" && (
               <div className="rounded-xl border bg-slate-50 border-slate-200 p-4 flex flex-col gap-3">
                 <div className="flex items-center gap-2">
@@ -291,7 +282,7 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
               </div>
             )}
 
-            {/* ── Actions ──────────────────────────────────────────────── */}
+            {/* Actions */}
             <div className="flex gap-3 pt-1">
               <button
                 onClick={onClose}
@@ -309,9 +300,9 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
               )}
             </div>
 
-          </div>{/* end scrollable body */}
-        </div>{/* end card */}
-      </div>{/* end centering wrapper */}
-    </div>/* end backdrop */
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

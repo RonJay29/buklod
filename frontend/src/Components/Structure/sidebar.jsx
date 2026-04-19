@@ -46,6 +46,14 @@ const navItems = [
           </svg>
         ),
       },
+       {
+        name: "Invoked Datasets",
+        icon: (
+          <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" className="w-[18px] h-[18px]">
+            <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+        ),
+      },
       {
         name: "Ledger",
         icon: (
@@ -54,6 +62,8 @@ const navItems = [
           </svg>
         ),
       },
+     
+
     ],
   },
 ];
@@ -104,7 +114,7 @@ export default function Sidebar({ activePage, setActivePage }) {
 
   const handleProfile = () => {
     setDropdownOpen(false);
-    setActivePage("Settings");
+    setActivePage("Profile");
   };
 
   return (
