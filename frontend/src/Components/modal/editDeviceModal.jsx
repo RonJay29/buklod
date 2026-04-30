@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { Modal, inputClass } from "./modalBase";
+import { useFormKeys } from "../../hooks/keyboardKeys";
 
 export default function EditDeviceModal({ device, onClose, onSave }) {
-  const [form,   setForm]   = useState({ name:"", location:"", description:"" });
-  const [errors, setErrors] = useState({});
+  const [form,       setForm]       = useState({ name:"", location:"", description:"" });
+  const [errors,     setErrors]     = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (device) {
@@ -30,9 +32,13 @@ export default function EditDeviceModal({ device, onClose, onSave }) {
 
   const handleSave = () => {
     if (!validate()) return;
+    setSubmitting(true);
     onSave(form);
     onClose();
   };
+
+  // ── Must be INSIDE the component, after handleSave is defined ─────────────
+  useFormKeys(handleSave, onClose, !submitting);
 
   return (
     <Modal title="Edit Device" onClose={onClose}>
@@ -52,9 +58,7 @@ export default function EditDeviceModal({ device, onClose, onSave }) {
         </div>
 
         <div className="flex flex-col gap-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            Editable Fields
-          </p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Editable Fields</p>
 
           {/* DevEUI — locked */}
           <div className="flex flex-col gap-1.5">
@@ -124,8 +128,8 @@ export default function EditDeviceModal({ device, onClose, onSave }) {
             className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-sm hover:bg-slate-50 transition">
             Cancel
           </button>
-          <button onClick={handleSave}
-            className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition">
+          <button onClick={handleSave} disabled={submitting}
+            className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition">
             Save Changes
           </button>
         </div>

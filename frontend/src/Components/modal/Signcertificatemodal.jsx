@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Modal } from "./modalBase";
 import api from "../../services/api";
+import { useFormKeys } from "../../hooks/keyboardKeys";
+
 
 export default function SignCertificateModal({ device, onClose, onSigned }) {
   const [certificate, setCertificate] = useState("");
@@ -38,6 +40,8 @@ export default function SignCertificateModal({ device, onClose, onSigned }) {
     }
   };
 
+    useFormKeys(handleSign, onClose, !loading && !generating && !!certificate);
+    
   return (
     <Modal title="Sign Digital Certificate" onClose={onClose}>
       <div className="flex flex-col gap-5">
@@ -67,7 +71,7 @@ export default function SignCertificateModal({ device, onClose, onSigned }) {
               className="w-4 h-4 text-blue-500 shrink-0">
               <path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
             </svg>
-            <p className="text-[13px] font-semibold text-slate-700">DICT PNPKI Certificate</p>
+            <p className="text-[13px] font-semibold text-slate-700">Certificate</p>
           </div>
 
           {generating ? (

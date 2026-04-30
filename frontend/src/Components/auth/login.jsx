@@ -1,46 +1,51 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useFormKeys } from "../../hooks/keyboardKeys";
 import { loginUser, registerUser } from "../../services/authService";
 
 export default function AuthPage() {
   const navigate = useNavigate();
-  const [mode, setMode]       = useState("login");
+  const [mode,     setMode]     = useState("login");
   const [showPass, setShowPass] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
 
   const [form, setForm] = useState({
     first_name: "", last_name: "", email: "", password: "",
   });
 
   const set = (key) => (e) => {
-    setForm({ ...form, [key]: e.target.value });
+    setForm(prev => ({ ...prev, [key]: e.target.value }));
     setError("");
   };
 
-  const handleSubmit = async () => {
-  setError("");
-  setLoading(true);
-  try {
-    if (mode === "login") {
-      await loginUser({ email: form.email, password: form.password });
-    } else {
-      await registerUser({
-        first_name: form.first_name,
-        last_name:  form.last_name,
-        email:      form.email,
-        password:   form.password,
-      });
+  // ── Define BEFORE useFormKeys so the hook receives the real reference ──────
+  // useCallback keeps the reference stable across re-renders so the
+  // useEffect inside useFormKeys doesn't re-register on every keystroke
+  const handleSubmit = useCallback(async () => {
+    setError("");
+    setLoading(true);
+    try {
+      if (mode === "login") {
+        await loginUser({ email: form.email, password: form.password });
+      } else {
+        await registerUser({
+          first_name: form.first_name,
+          last_name:  form.last_name,
+          email:      form.email,
+          password:   form.password,
+        });
+      }
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      setError(err.response?.data?.message || "Something went wrong");
+    } finally {
+      setLoading(false);
     }
-    // replace: true removes /login from history stack
-    // so pressing back from /dashboard won't return to /login
-    navigate("/dashboard", { replace: true });
-  } catch (err) {
-    setError(err.response?.data?.message || "Something went wrong");
-  } finally {
-    setLoading(false);
-  }
-  };
+  }, [mode, form, navigate]);
+
+  // ── Now safe to call — handleSubmit is already defined above ──────────────
+  useFormKeys(handleSubmit, null, !loading);
 
   return (
     <div className="w-full min-h-screen overflow-hidden flex bg-slate-900 text-white font-sans">
@@ -55,10 +60,9 @@ export default function AuthPage() {
             Buklod
             <br />
             <p className="text-lg text-slate-400 font-light max-w-md mt-1">
-              A beautiful dashboard for managing your devices and sensor data. 
+              A beautiful dashboard for managing your devices and sensor data.
             </p>
           </h1>
-          
         </div>
 
         <div className="flex flex-col gap-3 mt-10 relative z-10">
@@ -79,7 +83,7 @@ export default function AuthPage() {
         </div>
       </div>
 
-      {/* Right side - auth card */}
+      {/* Right side — auth card */}
       <div className="flex flex-1 justify-end items-center p-8">
         <div className="relative w-full max-w-md">
           <div className="bg-white rounded-3xl me-10 border border-slate-200 overflow-hidden text-black shadow-2xl shadow-blue-950/50">
@@ -87,7 +91,6 @@ export default function AuthPage() {
             {/* Header */}
             <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 p-8 text-white text-center relative overflow-hidden">
               <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_30%_50%,#3b82f6,transparent)]" />
-           
               <h1 className="text-2xl font-bold tracking-tight relative z-10">
                 {mode === "login" ? "Welcome back" : "Create account"}
               </h1>
@@ -116,7 +119,6 @@ export default function AuthPage() {
             {/* Form */}
             <div className="p-6 pt-4 space-y-4">
 
-              {/* Error message */}
               {error && (
                 <div className="bg-rose-50 border border-rose-200 text-rose-600 text-xs px-4 py-2.5 rounded-xl">
                   {error}
@@ -173,7 +175,8 @@ export default function AuthPage() {
                     placeholder="••••••••"
                     className="w-full pl-10 pr-11 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition"
                   />
-                  <button onClick={() => setShowPass(!showPass)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition">
+                  <button onClick={() => setShowPass(!showPass)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition">
                     {showPass ? (
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
@@ -188,39 +191,23 @@ export default function AuthPage() {
                 </div>
               </div>
 
-             
-
-              {mode === "signup" && (
-                <label className="flex items-start gap-2 text-xs text-slate-500 cursor-pointer">
-                  {/* <input type="checkbox" className="accent-blue-600 mt-0.5 rounded" />
-                  <span>I agree to the <a href="#" className="text-blue-600 font-semibold underline underline-offset-2">Terms of Service</a> and <a href="#" className="text-blue-600 font-semibold underline underline-offset-2">Privacy Policy</a></span> */}
-                </label>
-              )}
-
               <button
                 onClick={handleSubmit}
                 disabled={loading}
                 className="w-full py-3.5 rounded-xl bg-gradient-to-r from-slate-800 via-blue-900 to-slate-800 text-white font-bold text-sm shadow-lg shadow-blue-950/40 hover:shadow-blue-900/60 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 mt-2 disabled:opacity-60 disabled:cursor-not-allowed disabled:scale-100"
               >
-                {loading
-                  ? "Please wait…"
-                  : mode === "login" ? "Sign In →" : "Create Account →"
-                }
+                {loading ? "Please wait…" : mode === "login" ? "Sign In →" : "Create Account →"}
               </button>
             </div>
 
-             {mode === "login" && (
-                <div className="flex items-center justify-center text-xs">
-                  {/* <label className="flex items-center gap-2 text-slate-500 cursor-pointer">
-                    <input type="checkbox" className="accent-blue-600 rounded" />
-                    Remember me
-                  </label> */}
-                 <p className="text-slate-400">Forgot Password? </p> <a href="#" className="text-blue-600 hover:text-blue-800  font-semibold transition"> Click here.</a>
-                </div>
-              )}
+            {mode === "login" && (
+              <div className="flex items-center justify-center gap-1 text-xs pb-2">
+                <p className="text-slate-400">Forgot Password?</p>
+                <a href="#" className="text-blue-600 hover:text-blue-800 font-semibold transition"> Click here.</a>
+              </div>
+            )}
 
-            {/* Footer */}
-            <p className="text-center text-xs text-slate-400 pb-6">
+            <p className="text-center text-xs text-slate-400 pb-6 pt-1">
               {mode === "login" ? "Don't have an account? " : "Already have an account? "}
               <button
                 onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}

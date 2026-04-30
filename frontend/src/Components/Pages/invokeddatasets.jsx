@@ -146,9 +146,16 @@ function DatasetRow({ batch, onSeal, onInvoke, sealing, invoking }) {
               </span>
             )}
           </div>
-          {batch.txId && (
-            <p className="font-mono text-[10px] text-violet-500 mt-1 truncate">TX: {batch.txId}</p>
-          )}
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            <span className="text-[10px] text-slate-400 font-medium">
+              Batch <span className="font-mono text-slate-600">#{batch.id}</span>
+            </span>
+            {batch.txId && (
+              <span className="font-mono text-[10px] text-violet-500 truncate">
+                TX: {batch.txId}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Record count */}
@@ -371,7 +378,7 @@ export default function InvokedDatasets() {
                   filter === f.key ? "bg-slate-700 text-slate-200 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-700"
                 }`}>
                 {f.label}
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${f.pill}`}>{f.count}</span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600`}>{f.count}</span>
               </button>
             ))}
           </div>

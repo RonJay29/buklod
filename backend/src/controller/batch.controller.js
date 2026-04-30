@@ -207,9 +207,9 @@ const BATCH_SELECT = `
   b.status,
   b.tx_id         AS "txId",
   b.record_count  AS "recordCount",
-  TO_CHAR(b.created_at   AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "createdAt",
-  TO_CHAR(b.sealed_at    AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "sealedAt",
-  TO_CHAR(b.committed_at AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "committedAt"
+  TO_CHAR(b.created_at::timestamptz   AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "createdAt",
+  TO_CHAR(b.sealed_at::timestamptz    AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "sealedAt",
+  TO_CHAR(b.committed_at::timestamptz AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "committedAt"
 `;
 
 // ── GET /api/batches ──────────────────────────────────────────────────────────
@@ -252,25 +252,18 @@ export async function getBatchReadings(req, res) {
   const { id } = req.params;
   try {
     const batch = await pool.query(
-      "SELECT id FROM device_data_batch WHERE id = $1",
-      [id]
+      "SELECT id FROM device_data_batch WHERE id = $1", [id]
     );
-    if (!batch.rows.length) {
-      return res.status(404).json({ message: "Batch not found" });
-    }
+    if (!batch.rows.length) return res.status(404).json({ message: "Batch not found" });
 
     const result = await pool.query(
-      `SELECT
-         id,
-         raw_payload AS "rawPayload",
-         decoded_data AS "decodedData",
-         TO_CHAR(timestamp AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "timestamp"
+      `SELECT id, raw_payload AS "rawPayload", decoded_data AS "decodedData",
+              TO_CHAR(timestamp::timestamptz AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "timestamp"
        FROM device_data
        WHERE batch_id = $1
        ORDER BY timestamp DESC`,
       [id]
     );
-
     return res.status(200).json({ readings: result.rows });
   } catch (err) {
     console.error("getBatchReadings:", err.message);
@@ -279,83 +272,33 @@ export async function getBatchReadings(req, res) {
 }
 
 // ── POST /api/batches/:id/seal ────────────────────────────────────────────────
-// Seal a batch, and optionally auto-invoke Fabric if ?invoke=true
 export async function sealBatch(req, res) {
   const { id } = req.params;
-  const autoInvoke = String(req.query.invoke || "").toLowerCase() === "true";
-
   try {
     const check = await pool.query(
-      "SELECT id, status, record_count FROM device_data_batch WHERE id = $1",
-      [id]
+      "SELECT id, status, record_count FROM device_data_batch WHERE id = $1", [id]
     );
-
-    if (!check.rows.length) {
-      return res.status(404).json({ message: "Batch not found" });
-    }
+    if (!check.rows.length) return res.status(404).json({ message: "Batch not found" });
 
     const { status, record_count } = check.rows[0];
-
     if (status !== "open") {
       return res.status(400).json({ message: `Batch is already ${status}` });
     }
-
     if (record_count === 0) {
-      return res.status(400).json({
-        message: "Cannot seal an empty batch — add readings first",
-      });
+      return res.status(400).json({ message: "Cannot seal an empty batch — add readings first" });
     }
 
     await pool.query(
-      `UPDATE device_data_batch
-       SET status = 'sealed', sealed_at = NOW()
-       WHERE id = $1`,
-      [id]
+      `UPDATE device_data_batch SET status = 'sealed', sealed_at = NOW() WHERE id = $1`, [id]
     );
 
     const full = await pool.query(
       `SELECT ${BATCH_SELECT}
        FROM device_data_batch b
        JOIN device d ON d.id = b.device_id
-       WHERE b.id = $1`,
-      [id]
+       WHERE b.id = $1`, [id]
     );
-
-    if (!autoInvoke) {
-      return res.status(200).json({
-        message: "Batch sealed",
-        batch: full.rows[0],
-      });
-    }
-
-    try {
-      const blockchain = await commitSealedBatchById(id);
-
-      const updated = await pool.query(
-        `SELECT ${BATCH_SELECT}
-         FROM device_data_batch b
-         JOIN device d ON d.id = b.device_id
-         WHERE b.id = $1`,
-        [id]
-      );
-
-      return res.status(200).json({
-        message: "Batch sealed and committed to blockchain",
-        batch: updated.rows[0],
-        blockchain,
-      });
-    } catch (fabricErr) {
-      console.error("sealBatch autoInvoke error:", fabricErr.message);
-
-      return res.status(200).json({
-        message: "Batch sealed, but blockchain commit failed",
-        batch: full.rows[0],
-        blockchain: {
-          success: false,
-          error: fabricErr.message,
-        },
-      });
-    }
+    return res.status(200).json({ message: "Batch sealed", batch: full.rows[0] });
   } catch (err) {
     console.error("sealBatch:", err.message);
     return res.status(500).json({ message: "Server error" });
@@ -363,25 +306,19 @@ export async function sealBatch(req, res) {
 }
 
 // ── POST /api/batches/:id/invoke ──────────────────────────────────────────────
-// Invoke sealed batch to Hyperledger Fabric using real Fabric SDK
+// Delegates to commitSealedBatchById in fabric.controller.js
 export async function invokeBatch(req, res) {
   const { id } = req.params;
-
   try {
     const check = await pool.query(
       `SELECT ${BATCH_SELECT}
        FROM device_data_batch b
        JOIN device d ON d.id = b.device_id
-       WHERE b.id = $1`,
-      [id]
+       WHERE b.id = $1`, [id]
     );
-
-    if (!check.rows.length) {
-      return res.status(404).json({ message: "Batch not found" });
-    }
+    if (!check.rows.length) return res.status(404).json({ message: "Batch not found" });
 
     const batch = check.rows[0];
-
     if (batch.status !== "sealed") {
       return res.status(400).json({
         message: `Batch must be sealed before invoking. Current status: ${batch.status}`,
@@ -394,20 +331,56 @@ export async function invokeBatch(req, res) {
       `SELECT ${BATCH_SELECT}
        FROM device_data_batch b
        JOIN device d ON d.id = b.device_id
-       WHERE b.id = $1`,
-      [id]
+       WHERE b.id = $1`, [id]
     );
 
     return res.status(200).json({
-      message: "Batch committed to Hyperledger Fabric",
+      message:    "Batch committed to Hyperledger Fabric",
+      fabricTxId: blockchain.fabricTxId,
       blockchain,
-      batch: full.rows[0],
+      batch:      full.rows[0],
     });
   } catch (err) {
     console.error("invokeBatch:", err.message);
-    return res.status(500).json({
-      message: "Fabric invocation failed",
-      detail: err.message,
+    await pool.query(
+      "UPDATE device_data_batch SET status = 'failed' WHERE id = $1", [id]
+    ).catch(() => {});
+    return res.status(502).json({ message: "Fabric invocation failed", detail: err.message });
+  }
+}
+
+// ── GET /api/batches/ledger-summary ──────────────────────────────────────────
+// Feeds the Hyperledger Fabric panel on the dashboard — no Fabric SDK calls
+export async function getLedgerSummary(req, res) {
+  try {
+    const summary = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'committed') AS total_transactions,
+        COUNT(*) FILTER (WHERE status = 'committed') AS block_count
+      FROM device_data_batch
+    `);
+
+    const recent = await pool.query(`
+      SELECT
+        b.tx_id                                                              AS "txId",
+        d.device_name                                                        AS "device",
+        TO_CHAR(b.committed_at::timestamptz AT TIME ZONE 'Asia/Manila', 'HH12:MI:SS AM') AS "time",
+        'Committed'                                                          AS "status"
+      FROM device_data_batch b
+      JOIN device d ON d.id = b.device_id
+      WHERE b.status = 'committed'
+        AND b.tx_id IS NOT NULL
+      ORDER BY b.committed_at DESC
+      LIMIT 10
+    `);
+
+    return res.status(200).json({
+      totalTransactions: parseInt(summary.rows[0].total_transactions, 10),
+      blockCount:        parseInt(summary.rows[0].block_count,        10),
+      transactions:      recent.rows,
     });
+  } catch (err) {
+    console.error("getLedgerSummary:", err.message);
+    return res.status(500).json({ message: "Server error" });
   }
 }

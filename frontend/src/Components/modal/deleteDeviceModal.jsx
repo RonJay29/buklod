@@ -1,6 +1,15 @@
+import { useFormKeys } from "../../hooks/keyboardKeys";
 import { Modal } from "./modalBase";
 
 export default function DeleteDeviceModal({ device, onClose, onConfirm }) {
+  const handleConfirm = () => {
+    onConfirm(device.id);
+    onClose();
+  };
+
+  // ── Must be INSIDE the component, after handleConfirm is defined ──────────
+  useFormKeys(handleConfirm, onClose, true);
+
   return (
     <Modal title="Remove Device" onClose={onClose}>
       <div className="flex flex-col gap-5">
@@ -21,7 +30,7 @@ export default function DeleteDeviceModal({ device, onClose, onConfirm }) {
 
         <div className="border-t border-slate-100" />
 
-        {/* Warning message */}
+        {/* Warning */}
         <div className="flex items-start gap-3 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
           <svg fill="none" stroke="#e11d48" strokeWidth="2" viewBox="0 0 24 24" className="w-4 h-4 shrink-0 mt-0.5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
@@ -40,14 +49,12 @@ export default function DeleteDeviceModal({ device, onClose, onConfirm }) {
             className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-sm hover:bg-slate-50 transition">
             Cancel
           </button>
-          <button
-            onClick={() => { onConfirm(device.id); onClose(); }}
+          <button onClick={handleConfirm}
             className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-medium hover:bg-rose-700 transition">
             Yes, Remove
           </button>
         </div>
-
       </div>
     </Modal>
   );
-}
+} 

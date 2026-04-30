@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import api from "../../services/api";
+import { useFormKeys } from "../../hooks/keyboardKeys";
 
-// ── Icons ──────────────────────────────────────────────────────────────────
+// ── Icons ──────────────────────────────────────────────────────────────────────
 const IconCertificate = () => (
   <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" className="w-5 h-5">
     <path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
@@ -29,7 +30,7 @@ function DetailRow({ label, value, mono = false }) {
   );
 }
 
-// ── Re-sign panel ──────────────────────────────────────────────────────────
+// ── Re-sign panel ──────────────────────────────────────────────────────────────
 function ReSignPanel({ device, onSigned, onClose }) {
   const [certificate, setCertificate] = useState("");
   const [generating,  setGenerating]  = useState(true);
@@ -66,6 +67,9 @@ function ReSignPanel({ device, onSigned, onClose }) {
       setSigning(false);
     }
   };
+
+  // Enter = re-sign, Escape = close panel
+  useFormKeys(handleReSign, onClose, !signing && !generating && !!certificate);
 
   return (
     <div className="rounded-xl border bg-emerald-50/50 border-emerald-200 p-4 flex flex-col gap-3">
@@ -113,15 +117,13 @@ function ReSignPanel({ device, onSigned, onClose }) {
   );
 }
 
-// ── Main modal ─────────────────────────────────────────────────────────────
+// ── Main modal ─────────────────────────────────────────────────────────────────
 export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned }) {
   const [showReSign, setShowReSign] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  // Escape only — view modal has no Enter action
+  // Also removes the old manual useEffect keydown listener
+  useFormKeys(null, onClose, true);
 
   if (!device) return null;
 
@@ -140,8 +142,6 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="min-h-full flex items-center justify-center px-4 py-6 sm:py-10">
-
-        {/* Card */}
         <div
           className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl shadow-slate-900/20 flex flex-col"
           onClick={(e) => e.stopPropagation()}
@@ -159,7 +159,7 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
             </button>
           </div>
 
-          {/* ── Scrollable body ───────────────────────────────────────── */}
+          {/* Scrollable body */}
           <div className="px-6 py-5 flex flex-col gap-5 overflow-y-auto max-h-[75vh]">
 
             {/* Device identity */}
@@ -195,12 +195,11 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
               </div>
             </div>
 
-            {/* Detail grid — 2 col on sm+, 1 col on mobile */}
+            {/* Detail grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 px-1">
               <DetailRow label="Device ID (DevEUI)" value={device.deviceId} mono />
               <DetailRow label="Location"           value={device.location} />
               <DetailRow label="Date Added"         value={device.dateAdded} />
-              {/* ── Description — full width, below Date Added ── */}
               <div className="sm:col-span-2">
                 <DetailRow label="Description" value={device.description || "No description provided"} />
               </div>
@@ -284,22 +283,17 @@ export default function ViewDeviceModal({ device, onClose, onRevoke, onSigned })
 
             {/* Actions */}
             <div className="flex gap-3 pt-1">
-              <button
-                onClick={onClose}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-sm hover:bg-slate-50 transition"
-              >
+              <button onClick={onClose}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-sm hover:bg-slate-50 transition">
                 Close
               </button>
               {isSigned && (
-                <button
-                  onClick={handleRevoke}
-                  className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-medium hover:bg-rose-700 transition"
-                >
+                <button onClick={handleRevoke}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-medium hover:bg-rose-700 transition">
                   Revoke Certificate
                 </button>
               )}
             </div>
-
           </div>
         </div>
       </div>

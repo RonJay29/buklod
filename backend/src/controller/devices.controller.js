@@ -381,18 +381,17 @@ function generateCertificateSerial() {
     .toUpperCase().match(/.{2}/g).join(":");
 }
 
-// ── Shared SELECT — joins all 3 tables ────────────────────────────────────────
 const SELECT_FIELDS = `
   d.id,
   d.device_name                              AS "name",
   d.deveui                                   AS "deviceId",
   d.description,
   d.location,
-  TO_CHAR(d.timestamp, 'Mon DD, YYYY')       AS "dateAdded",
-  di.identity_status                         AS "certStatus",
+  TO_CHAR(d.timestamp::timestamptz     AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS "dateAdded",
+  di.identity_status                                                                           AS "certStatus",
   di.certificate,
-  TO_CHAR(di.signed_date,  'Mon DD, YYYY')   AS "certifiedDate",
-  TO_CHAR(di.revoked_date, 'Mon DD, YYYY')   AS "revokedDate"
+  TO_CHAR(di.signed_date::timestamptz  AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS "certifiedDate",
+  TO_CHAR(di.revoked_date::timestamptz AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS "revokedDate"
 `;
 
 const FROM_JOINED = `
@@ -418,12 +417,9 @@ export async function getDevice(req, res) {
   const { id } = req.params;
   try {
     const result = await pool.query(
-      `SELECT ${SELECT_FIELDS} ${FROM_JOINED} WHERE d.id = $1`,
-      [id]
+      `SELECT ${SELECT_FIELDS} ${FROM_JOINED} WHERE d.id = $1`, [id]
     );
-    if (!result.rows.length) {
-      return res.status(404).json({ message: "Device not found" });
-    }
+    if (!result.rows.length) return res.status(404).json({ message: "Device not found" });
     return res.status(200).json({ device: result.rows[0] });
   } catch (err) {
     console.error("getDevice:", err.message);
@@ -432,53 +428,40 @@ export async function getDevice(req, res) {
 }
 
 // ── POST /api/devices ─────────────────────────────────────────────────────────
-// Save to PostgreSQL first, then auto-register on blockchain
 export async function addDevice(req, res) {
   const { name, location, description, devEUI, certificate } = req.body;
 
   if (!name || !location || !devEUI) {
-    return res.status(400).json({
-      message: "Name, location, and DevEUI are required",
-    });
+    return res.status(400).json({ message: "Name, location, and DevEUI are required" });
   }
 
   const normalizedEUI = devEUI.trim().toUpperCase();
   if (!/^[0-9A-F]{16}$/.test(normalizedEUI)) {
-    return res.status(400).json({
-      message: "DevEUI must be exactly 16 hex characters",
-    });
+    return res.status(400).json({ message: "DevEUI must be exactly 16 hex characters" });
   }
 
   const isUnsigned = !certificate || certificate === "UNSIGNED";
-
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
 
-    const dup = await client.query(
-      "SELECT id FROM device WHERE deveui = $1",
-      [normalizedEUI]
-    );
+    const dup = await client.query("SELECT id FROM device WHERE deveui = $1", [normalizedEUI]);
     if (dup.rows.length > 0) {
       await client.query("ROLLBACK");
-      return res.status(409).json({
-        message: "Device with this DevEUI already exists",
-      });
+      return res.status(409).json({ message: "Device with this DevEUI already exists" });
     }
 
     const deviceResult = await client.query(
       `INSERT INTO device (device_name, deveui, description, location)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id`,
+       VALUES ($1, $2, $3, $4) RETURNING id`,
       [name.trim(), normalizedEUI, description?.trim() || null, location.trim()]
     );
     const deviceId = deviceResult.rows[0].id;
 
     if (isUnsigned) {
       await client.query(
-        `INSERT INTO device_identity (device_id, identity_status)
-         VALUES ($1, 'unsigned')`,
+        `INSERT INTO device_identity (device_id, identity_status) VALUES ($1, 'unsigned')`,
         [deviceId]
       );
     } else {
@@ -492,13 +475,12 @@ export async function addDevice(req, res) {
     await client.query("COMMIT");
 
     const full = await pool.query(
-      `SELECT ${SELECT_FIELDS} ${FROM_JOINED} WHERE d.id = $1`,
-      [deviceId]
+      `SELECT ${SELECT_FIELDS} ${FROM_JOINED} WHERE d.id = $1`, [deviceId]
     );
 
+    // Auto-register on Fabric — non-blocking, DB enrollment already succeeded
     let blockchain = null;
     let blockchainError = null;
-
     try {
       blockchain = await registerDeviceOnChainById(deviceId);
     } catch (error) {
@@ -506,21 +488,12 @@ export async function addDevice(req, res) {
       blockchainError = error.message;
     }
 
-    if (blockchainError) {
-      return res.status(201).json({
-        message: "Device enrolled in PostgreSQL, but blockchain registration failed",
-        device: full.rows[0],
-        blockchain: {
-          success: false,
-          error: blockchainError,
-        },
-      });
-    }
-
     return res.status(201).json({
-      message: "Device enrolled successfully in PostgreSQL and blockchain",
+      message: blockchainError
+        ? "Device enrolled in PostgreSQL, but blockchain registration failed"
+        : "Device enrolled successfully in PostgreSQL and blockchain",
       device: full.rows[0],
-      blockchain,
+      blockchain: blockchain ?? { success: false, error: blockchainError },
     });
   } catch (err) {
     await client.query("ROLLBACK");
@@ -544,38 +517,23 @@ export async function editDevice(req, res) {
     const check = await pool.query(
       `SELECT di.identity_status FROM device d
        JOIN device_identity di ON di.device_id = d.id
-       WHERE d.id = $1`,
-      [id]
+       WHERE d.id = $1`, [id]
     );
-
-    if (!check.rows.length) {
-      return res.status(404).json({ message: "Device not found" });
-    }
+    if (!check.rows.length) return res.status(404).json({ message: "Device not found" });
 
     const status = check.rows[0].identity_status;
-    if (status === "signed") {
-      return res.status(403).json({ message: "Cannot edit a signed device. Revoke first." });
-    }
-    if (status === "revoked") {
-      return res.status(403).json({ message: "Cannot edit a revoked device." });
-    }
+    if (status === "signed")  return res.status(403).json({ message: "Cannot edit a signed device. Revoke first." });
+    if (status === "revoked") return res.status(403).json({ message: "Cannot edit a revoked device." });
 
     await pool.query(
-      `UPDATE device
-       SET device_name = $1, location = $2, description = $3
-       WHERE id = $4`,
+      `UPDATE device SET device_name = $1, location = $2, description = $3 WHERE id = $4`,
       [name.trim(), location.trim(), description?.trim() || null, id]
     );
 
     const full = await pool.query(
-      `SELECT ${SELECT_FIELDS} ${FROM_JOINED} WHERE d.id = $1`,
-      [id]
+      `SELECT ${SELECT_FIELDS} ${FROM_JOINED} WHERE d.id = $1`, [id]
     );
-
-    return res.status(200).json({
-      message: "Device updated",
-      device: full.rows[0],
-    });
+    return res.status(200).json({ message: "Device updated", device: full.rows[0] });
   } catch (err) {
     console.error("editDevice:", err.message);
     return res.status(500).json({ message: "Server error" });
@@ -585,20 +543,12 @@ export async function editDevice(req, res) {
 // ── DELETE /api/devices/:id ───────────────────────────────────────────────────
 export async function deleteDevice(req, res) {
   const { id } = req.params;
-
   try {
     const result = await pool.query(
-      "DELETE FROM device WHERE id = $1 RETURNING device_name",
-      [id]
+      "DELETE FROM device WHERE id = $1 RETURNING device_name", [id]
     );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ message: "Device not found" });
-    }
-
-    return res.status(200).json({
-      message: `Device "${result.rows[0].device_name}" removed`,
-    });
+    if (!result.rows.length) return res.status(404).json({ message: "Device not found" });
+    return res.status(200).json({ message: `Device "${result.rows[0].device_name}" removed` });
   } catch (err) {
     console.error("deleteDevice:", err.message);
     return res.status(500).json({ message: "Server error" });
@@ -607,9 +557,7 @@ export async function deleteDevice(req, res) {
 
 // ── GET /api/devices/generate-certificate ────────────────────────────────────
 export async function generateCertificate(req, res) {
-  return res.status(200).json({
-    certificate: generateCertificateSerial(),
-  });
+  return res.status(200).json({ certificate: generateCertificateSerial() });
 }
 
 // ── PUT /api/devices/:id/sign-certificate ────────────────────────────────────
@@ -617,24 +565,15 @@ export async function signCertificate(req, res) {
   const { id } = req.params;
   const { certificate } = req.body;
 
-  if (!certificate) {
-    return res.status(400).json({ message: "Certificate is required" });
-  }
+  if (!certificate) return res.status(400).json({ message: "Certificate is required" });
 
   try {
     const check = await pool.query(
-      "SELECT id, identity_status FROM device_identity WHERE device_id = $1",
-      [id]
+      "SELECT id, identity_status FROM device_identity WHERE device_id = $1", [id]
     );
-
-    if (!check.rows.length) {
-      return res.status(404).json({ message: "Device not found" });
-    }
-
+    if (!check.rows.length) return res.status(404).json({ message: "Device not found" });
     if (check.rows[0].identity_status === "signed") {
-      return res.status(409).json({
-        message: "Device already has a signed certificate",
-      });
+      return res.status(409).json({ message: "Device already has a signed certificate" });
     }
 
     await pool.query(
@@ -648,14 +587,9 @@ export async function signCertificate(req, res) {
     );
 
     const full = await pool.query(
-      `SELECT ${SELECT_FIELDS} ${FROM_JOINED} WHERE d.id = $1`,
-      [id]
+      `SELECT ${SELECT_FIELDS} ${FROM_JOINED} WHERE d.id = $1`, [id]
     );
-
-    return res.status(200).json({
-      message: "Certificate signed",
-      device: full.rows[0],
-    });
+    return res.status(200).json({ message: "Certificate signed", device: full.rows[0] });
   } catch (err) {
     console.error("signCertificate:", err.message);
     return res.status(500).json({ message: "Server error" });
@@ -665,21 +599,13 @@ export async function signCertificate(req, res) {
 // ── PUT /api/devices/:id/revoke-certificate ───────────────────────────────────
 export async function revokeCertificate(req, res) {
   const { id } = req.params;
-
   try {
     const check = await pool.query(
-      "SELECT id, identity_status FROM device_identity WHERE device_id = $1",
-      [id]
+      "SELECT id, identity_status FROM device_identity WHERE device_id = $1", [id]
     );
-
-    if (!check.rows.length) {
-      return res.status(404).json({ message: "Device not found" });
-    }
-
+    if (!check.rows.length) return res.status(404).json({ message: "Device not found" });
     if (check.rows[0].identity_status !== "signed") {
-      return res.status(400).json({
-        message: "Only signed certificates can be revoked",
-      });
+      return res.status(400).json({ message: "Only signed certificates can be revoked" });
     }
 
     await pool.query(
@@ -687,19 +613,13 @@ export async function revokeCertificate(req, res) {
        SET identity_status = 'revoked',
            certificate     = NULL,
            revoked_date    = NOW()
-       WHERE device_id = $1`,
-      [id]
+       WHERE device_id = $1`, [id]
     );
 
     const full = await pool.query(
-      `SELECT ${SELECT_FIELDS} ${FROM_JOINED} WHERE d.id = $1`,
-      [id]
+      `SELECT ${SELECT_FIELDS} ${FROM_JOINED} WHERE d.id = $1`, [id]
     );
-
-    return res.status(200).json({
-      message: "Certificate revoked",
-      device: full.rows[0],
-    });
+    return res.status(200).json({ message: "Certificate revoked", device: full.rows[0] });
   } catch (err) {
     console.error("revokeCertificate:", err.message);
     return res.status(500).json({ message: "Server error" });
@@ -708,44 +628,31 @@ export async function revokeCertificate(req, res) {
 
 // ── GET /api/devices/:id/data ─────────────────────────────────────────────────
 export async function getDeviceData(req, res) {
-  const { id } = req.params;
-  const limit = Math.min(parseInt(req.query.limit ?? "200", 10), 500);
-  const offset = parseInt(req.query.offset ?? "0", 10);
+  const { id }  = req.params;
+  const limit   = Math.min(parseInt(req.query.limit  ?? "200", 10), 500);
+  const offset  = parseInt(req.query.offset ?? "0", 10);
 
   try {
     const deviceCheck = await pool.query(
-      "SELECT id, device_name FROM device WHERE id = $1",
-      [id]
+      "SELECT id, device_name FROM device WHERE id = $1", [id]
     );
-
-    if (!deviceCheck.rows.length) {
-      return res.status(404).json({ message: "Device not found" });
-    }
+    if (!deviceCheck.rows.length) return res.status(404).json({ message: "Device not found" });
 
     const result = await pool.query(
-      `SELECT
-         id,
-         raw_payload AS "rawPayload",
-         decoded_data AS "decodedData",
-         TO_CHAR(timestamp AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "timestamp"
-       FROM device_data
-       WHERE device_id = $1
-       ORDER BY timestamp DESC
-       LIMIT $2 OFFSET $3`,
+      `SELECT id, raw_payload AS "rawPayload", decoded_data AS "decodedData",
+              TO_CHAR(timestamp::timestamptz AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "timestamp"
+       FROM device_data WHERE device_id = $1
+       ORDER BY timestamp DESC LIMIT $2 OFFSET $3`,
       [id, limit, offset]
     );
-
     const total = await pool.query(
-      "SELECT COUNT(*) AS total FROM device_data WHERE device_id = $1",
-      [id]
+      "SELECT COUNT(*) AS total FROM device_data WHERE device_id = $1", [id]
     );
-
     return res.status(200).json({
       deviceId: id,
-      name: deviceCheck.rows[0].device_name,
-      total: parseInt(total.rows[0].total, 10),
-      limit,
-      offset,
+      name:     deviceCheck.rows[0].device_name,
+      total:    parseInt(total.rows[0].total, 10),
+      limit, offset,
       readings: result.rows,
     });
   } catch (err) {
@@ -756,31 +663,23 @@ export async function getDeviceData(req, res) {
 
 // ── GET /api/devices/data/all ─────────────────────────────────────────────────
 export async function getAllDeviceData(req, res) {
-  const limit = Math.min(parseInt(req.query.limit ?? "200", 10), 500);
+  const limit  = Math.min(parseInt(req.query.limit  ?? "200", 10), 500);
   const offset = parseInt(req.query.offset ?? "0", 10);
 
   try {
     const result = await pool.query(
-      `SELECT
-         dd.id,
-         d.device_name AS device,
-         d.deveui AS "deviceId",
-         dd.raw_payload AS "rawPayload",
-         dd.decoded_data AS "decodedData",
-         TO_CHAR(dd.timestamp AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "timestamp"
+      `SELECT dd.id, d.device_name AS device, d.deveui AS "deviceId",
+              dd.raw_payload AS "rawPayload", dd.decoded_data AS "decodedData",
+              TO_CHAR(dd.timestamp::timestamptz AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "timestamp"
        FROM device_data dd
        JOIN device d ON d.id = dd.device_id
-       ORDER BY dd.timestamp DESC
-       LIMIT $1 OFFSET $2`,
+       ORDER BY dd.timestamp DESC LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
-
     const total = await pool.query("SELECT COUNT(*) AS total FROM device_data");
-
     return res.status(200).json({
-      total: parseInt(total.rows[0].total, 10),
-      limit,
-      offset,
+      total:    parseInt(total.rows[0].total, 10),
+      limit, offset,
       readings: result.rows,
     });
   } catch (err) {
@@ -794,25 +693,17 @@ export async function saveDeviceData(req, res) {
   const { id } = req.params;
   const { rawPayload, decodedData } = req.body;
 
-  if (!rawPayload) {
-    return res.status(400).json({ message: "rawPayload is required" });
-  }
+  if (!rawPayload) return res.status(400).json({ message: "rawPayload is required" });
 
   try {
     const deviceCheck = await pool.query(
-      "SELECT id, device_name FROM device WHERE id = $1",
-      [id]
+      "SELECT id, device_name FROM device WHERE id = $1", [id]
     );
-
-    if (!deviceCheck.rows.length) {
-      return res.status(404).json({ message: "Device not found" });
-    }
+    if (!deviceCheck.rows.length) return res.status(404).json({ message: "Device not found" });
 
     const identity = await pool.query(
-      "SELECT identity_status FROM device_identity WHERE device_id = $1",
-      [id]
+      "SELECT identity_status FROM device_identity WHERE device_id = $1", [id]
     );
-
     if (!identity.rows.length || identity.rows[0].identity_status !== "signed") {
       return res.status(403).json({
         message: "Device must have a signed certificate before data can be saved",
@@ -820,22 +711,17 @@ export async function saveDeviceData(req, res) {
     }
 
     let batchId = null;
-
     const existingBatch = await pool.query(
-      `SELECT id
-       FROM device_data_batch
+      `SELECT id FROM device_data_batch
        WHERE device_id = $1 AND status = 'open'
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [id]
+       ORDER BY created_at DESC LIMIT 1`, [id]
     );
 
     if (existingBatch.rows.length > 0) {
       batchId = existingBatch.rows[0].id;
     } else {
       const newBatch = await pool.query(
-        "INSERT INTO device_data_batch (device_id) VALUES ($1) RETURNING id",
-        [id]
+        "INSERT INTO device_data_batch (device_id) VALUES ($1) RETURNING id", [id]
       );
       batchId = newBatch.rows[0].id;
     }
@@ -843,26 +729,60 @@ export async function saveDeviceData(req, res) {
     const result = await pool.query(
       `INSERT INTO device_data (device_id, raw_payload, decoded_data, batch_id)
        VALUES ($1, $2, $3, $4)
-       RETURNING
-         id,
-         raw_payload AS "rawPayload",
-         decoded_data AS "decodedData",
-         TO_CHAR(timestamp AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "timestamp"`,
+       RETURNING id, raw_payload AS "rawPayload", decoded_data AS "decodedData",
+                 TO_CHAR(timestamp::timestamptz AT TIME ZONE 'Asia/Manila', 'MM/DD/YY HH12:MI AM') AS "timestamp"`,
       [id, rawPayload.trim(), decodedData ? JSON.stringify(decodedData) : null, batchId]
     );
 
     await pool.query(
-      "UPDATE device_data_batch SET record_count = record_count + 1 WHERE id = $1",
-      [batchId]
+      "UPDATE device_data_batch SET record_count = record_count + 1 WHERE id = $1", [batchId]
     );
 
-    return res.status(201).json({
-      message: "Data saved successfully",
-      batchId,
-      data: result.rows[0],
-    });
+    return res.status(201).json({ message: "Data saved successfully", batchId, data: result.rows[0] });
   } catch (err) {
     console.error("saveDeviceData:", err.message);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// ── GET /api/devices/activity ─────────────────────────────────────────────────
+// Feeds the Device Activity panel on the dashboard
+export async function getDeviceActivity(req, res) {
+  try {
+    const result = await pool.query(`
+      SELECT
+        d.device_name      AS "name",
+        d.deveui           AS "devEUI",
+        di.identity_status AS "certStatus",
+        TO_CHAR(
+          MAX(dd.timestamp)::timestamptz AT TIME ZONE 'Asia/Manila',
+          'MM/DD/YY HH12:MI AM'
+        )                  AS "lastSeen",
+        CASE
+          WHEN MAX(dd.timestamp) > NOW() - INTERVAL '15 minutes'
+          THEN 'Online' ELSE 'Offline'
+        END                AS "status",
+        CASE
+          WHEN b.status = 'committed' THEN 'TX Committed'
+          WHEN b.status = 'sealed'    THEN 'Batch Sealed'
+          WHEN MAX(dd.timestamp) IS NOT NULL THEN 'Data TX'
+          ELSE 'No Data'
+        END                AS "event"
+      FROM device d
+      LEFT JOIN device_identity di ON di.device_id = d.id
+      LEFT JOIN device_data     dd ON dd.device_id  = d.id
+      LEFT JOIN LATERAL (
+        SELECT status FROM device_data_batch
+        WHERE device_id = d.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) b ON true
+      GROUP BY d.id, d.device_name, d.deveui, di.identity_status, b.status
+      ORDER BY MAX(dd.timestamp) DESC NULLS LAST
+    `);
+    return res.status(200).json({ devices: result.rows });
+  } catch (err) {
+    console.error("getDeviceActivity:", err.message);
     return res.status(500).json({ message: "Server error" });
   }
 }

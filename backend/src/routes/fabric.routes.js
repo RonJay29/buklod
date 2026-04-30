@@ -31,6 +31,7 @@ import express from "express";
 import {
   fabricHealth,
   getChannelInfo, // ADDED
+  getBlocks,
   registerDeviceOnChain,
   readRegisteredDevice,
   getAllRegisteredDevices,
@@ -44,6 +45,7 @@ const router = express.Router();
 
 router.get("/health", fabricHealth);
 router.get("/channel-info", getChannelInfo);
+router.get("/blocks", getBlocks);
 
 // device registry
 router.post("/devices/:deviceId/register", registerDeviceOnChain);

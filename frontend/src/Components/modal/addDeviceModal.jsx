@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Modal, inputClass } from "./modalBase";
+import { useFormKeys } from "../../hooks/keyboardKeys";
 
 export default function AddDeviceModal({ onClose, onAdd }) {
   const [form, setForm] = useState({
@@ -44,6 +45,8 @@ export default function AddDeviceModal({ onClose, onAdd }) {
       setSubmitting(false);
     }
   };
+
+  useFormKeys(handleAdd, onClose, !submitting);
 
   return (
     <Modal title="Add New Device" onClose={onClose}>
